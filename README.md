@@ -9,6 +9,7 @@ Cross-project setup and build tools that guarantee code/process consistency and 
     * [Install Python Project Starter Makefile](#install-python-project-starter-makefile)
     * [Install Python Common Makefile](#install-python-common-makefile)
     * [Use Python Common Recipes](#use-python-common-recipes)
+    * [Use Python Release Builder](#use-python-release-builder)
     * [Contribute](#contribute)
 
 
@@ -32,7 +33,7 @@ Either way, the tools will typically not be used directly from a full clone of t
     - `UPSTREAM` is required, and must be the project's upstream git repository path.
     - `PYLINT_EXTRAS` is optional, and can be used to add additional file(s)/folder(s) to the lint jobs.
 1. Run `make setup` to set up the project and clone the Python common recipes for future use.
-1. Optional: Follow [Use Python Common Recipes](#use-python-common-makefile-recipes) as needed.
+1. Optional: Follow [Use Python Common Recipes](#use-python-common-recipes) as needed.
 
 ### Install Python Common Makefile
 
@@ -40,7 +41,7 @@ The process is performed automatically by the Python project starter Makefile.
 To use the file manually:
 1. Copy the [python.mk](./python.mk) to `python.mk` in an existing project.
 1. Add `-include python.mk` to the top of the primary `Makefile` in the project.
-1. Follow [Use Python Common Recipes](#use-python-common-makefile-recipes) as needed.
+1. Follow [Use Python Common Recipes](#use-python-common-recipes) as needed.
 
 ### Use Python Common Recipes
 
@@ -56,7 +57,16 @@ The Python common Makefile contains the following recipes:
 - `qa` - Check full code quality suite (minus unit tests) against source.
 - `test` - Run basic unit tests.
 - `wheel` - Package the library into a pip installable.
+- `release` - Package the library into a pip installable.
 - `clean` - Remove the packages from previous builds.
+
+### Use Python Release Builder
+
+The process is performed automatically by the `make release` shared python recipe.
+To use the file manually:
+1. Copy the [build_python_release.sh](./build_python_release.sh) to `build_python_release.sh` in an existing project.
+1. Run `build_python_release.sh`.
+1. Follow the steps printed to upload.
 
 
 ### Contribute
