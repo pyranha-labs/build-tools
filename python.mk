@@ -88,7 +88,16 @@ test:
 wheel:
 	@python -m build && \
 		echo "🏆 Wheel built successfully!" || \
-		(echo "💔 Wheel failed, resolve errors and try again."; exit 1)
+		(echo "💔 Wheel build failed, resolve errors and try again."; exit 1)
+
+# Perform a fully isolated build from the latest commit in a repository suite for release.
+.PHONY: release
+release:
+	@curl https://raw.githubusercontent.com/pyranha-labs/build-tools/refs/heads/main/build_python_release.sh -o build_python_release.sh
+	@chmod 755 build_python_release.sh
+	@./build_python_release.sh && \
+		echo "🏆 Release built successfully!" || \
+		(echo "💔 Release build failed, resolve errors and try again."; exit 1)
 
 # Clean the packages from all builds.
 .PHONY: clean
