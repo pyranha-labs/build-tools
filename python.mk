@@ -3,8 +3,8 @@
 PY_MAKE_ORIGIN := https://raw.githubusercontent.com/pyranha-labs/build-tools/refs/heads/main/python.mk
 PY_PROJECT_NAME := $(shell sed -n 's/^name = "\(.*\)"$$/\1/p' pyproject.toml)
 PY_PROJECT_ROOT := $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
-PYTHON_BIN := python3.10
-PYLINT_EXTRAS := ""
+PYTHON_BIN := python3.12
+PYLINT_EXTRAS :=
 
 ##### Development Setups and Configurations #####
 
