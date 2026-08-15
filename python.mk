@@ -3,12 +3,17 @@
 PY_MAKE_ORIGIN := https://raw.githubusercontent.com/pyranha-labs/build-tools/refs/heads/main/python.mk
 PY_PROJECT_NAME := $(shell sed -n 's/^name = "\(.*\)"$$/\1/p' pyproject.toml)
 PY_PROJECT_ROOT := $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
-PYTHON_BIN := python3.12
+PYTHON_BIN ?= python3.12
 PYLINT_EXTRAS :=
+
+# Run the full local gate. Pushes only enforce qa; see hooks/pre-push.
+.PHONY: default
+default: qa test
 
 ##### Development Setups and Configurations #####
 
 # Update the shared python recipes (this file) outside initial setup.
+.PHONY: update-py-make
 update-py-make:
 	curl $(PY_MAKE_ORIGIN) -o python.mk
 
@@ -80,6 +85,11 @@ test:
 	@pytest $(PY_PROJECT_ROOT) --cov --cov-report="" && \
 		echo "🏆 Tests good to go!" || \
 		(echo "💔 Please resolve all test failures to ensure stability and quality."; exit 1)
+
+# Run the unit tests with a per-line coverage report, for finding the gaps `make test` only totals.
+.PHONY: coverage
+coverage:
+	@pytest $(PY_PROJECT_ROOT) --cov --cov-report=term-missing
 
 ##### Builds #####
 
