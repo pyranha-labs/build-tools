@@ -1,10 +1,14 @@
 # Shared recipes for working on Python projects.
 
-PY_MAKE_ORIGIN := https://raw.githubusercontent.com/pyranha-labs/build-tools/refs/heads/main/python.mk
+PY_MAKE_ORIGIN := https://raw.githubusercontent.com/pyranha-labs/build-tools/refs/heads/main
 PY_PROJECT_NAME := $(shell sed -n 's/^name = "\(.*\)"$$/\1/p' pyproject.toml)
 PY_PROJECT_ROOT := $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
-PYTHON_BIN ?= python3.12
+PY_SRC_ROOT := src/$(PY_PROJECT_NAME)
 PYLINT_EXTRAS :=
+# Scope security/bandit to the checkout it runs from. Its exclusions are matched as substrings of the full path,
+# so the absolute root `python.mk` computes drags the checkout's own location in: inside a worktree swallows the
+# worktree's own source and the gate passes on zero lines.
+PY_SECURITY_ROOT := ./
 
 # Run the full local gate. Pushes only enforce qa; see hooks/pre-push.
 .PHONY: default
@@ -15,17 +19,20 @@ default: qa test
 # Update the shared python recipes (this file) outside initial setup.
 .PHONY: update-py-make
 update-py-make:
-	curl $(PY_MAKE_ORIGIN) -o python.mk
+	mkdir -v tools
+	curl $(PY_MAKE_ORIGIN)/python.mk -o python.mk
+	curl $(PY_MAKE_ORIGIN)/tools/build_python_release.sh -o tools/build_python_release.sh
+	chmod 755 tools/build_python_release.sh
+	curl $(PY_MAKE_ORIGIN)/tools/check_pydocs.py -o tools/check_pydocs.py
+	chmod 755 tools/check_pydocs.py
+	curl $(PY_MAKE_ORIGIN)/tools/organize_pycode.py -o tools/organize_pycode.py
+	chmod 755 tools/organize_pycode.py
 
 # Create python virtual environment for development/testing.
 .PHONY: venv
 venv:
-	$(PYTHON_BIN) -m venv $(PY_PROJECT_ROOT).venv && \
-	ln -sfnv $(PY_PROJECT_ROOT).venv/bin/activate $(PY_PROJECT_ROOT)activate && \
-	. $(PY_PROJECT_ROOT)activate && \
-	pip install $(shell ls requirements*.txt | tr '\n' ' ' | sed 's/\(requirements[^ ]*\)/-r \1/g') && \
-	echo $(PY_PROJECT_ROOT) > $(PY_PROJECT_ROOT).venv/lib/$(PYTHON_BIN)/site-packages/$(PY_PROJECT_NAME).pth
-	@. $(PY_PROJECT_ROOT)activate && pip check && \
+	@uv venv && uv sync && uv pip check && \
+		ln -sfnv $(PY_PROJECT_ROOT).venv/bin/activate $(PY_PROJECT_ROOT)activate && \
 		echo "🏆 Virtual environment built successfully!" || \
 		(echo "💔 Virtual environment set up failed, resolve errors and try again."; exit 1)
 
@@ -40,20 +47,36 @@ clean-venv:
 .PHONY: format
 format:
 	@echo Running code format checks: black/ruff
-	@ruff format --check --diff $(PY_PROJECT_ROOT) && \
+	@uv run ruff format --check --diff $(PY_PROJECT_ROOT) && \
 		echo "🏆 Code format good to go!" || \
-		(echo "💔 Please run formatter to ensure code consistency and quality:\nruff format $(PY_PROJECT_ROOT)"; exit 1)
+		(echo "💔 Please run formatter to ensure code consistency and quality:\nuv run ruff format $(PY_PROJECT_ROOT)"; exit 1)
+
+# Check that no private or property docstring publishes a contract that is reserved for public callers.
+.PHONY: docstrings
+docstrings:
+	@echo Running docstring checks: check_pydocs
+	@uv run python $(PY_PROJECT_ROOT)tools/check_pydocs.py $(PY_SRC_ROOT) $(PYLINT_EXTRAS) && \
+		echo "🏆 Docstrings good to go!" || \
+		(echo "💔 Please fold a private or property docstring's sections into its summary."; exit 1)
+
+# Check that every module declares items in the most consistent order.
+.PHONY: order
+order:
+	@echo Running definition order checks: organize_pycode
+	@uv run python $(PY_PROJECT_ROOT)tools/organize_pycode.py $(PY_SRC_ROOT) && \
+		echo "🏆 Definition order good to go!" || \
+		(echo "💔 Please sort definitions so a reader can find one by name:\nuv run python tools/organize_pycode.py --fix"; exit 1)
 
 # Check for common lint/complexity/style issues.
 # Ruff is used for isort, pycodestyle, pydocstyle. Pylint is used separately for greater coverage.
 .PHONY: lint
 lint:
 	@echo Running code and documentation style checks: isort, pycodestyle, pydocstyle
-	@ruff check $(PY_PROJECT_ROOT) && \
+	@uv run ruff check $(PY_PROJECT_ROOT) && \
 		echo "🏆 Code/Doc style good to go!" || \
-		(echo "💔 Please resolve all style warnings to ensure readability, scalability, and maintainability:\nruff check --fix $(PY_PROJECT_ROOT)"; exit 1)
+		(echo "💔 Please resolve all style warnings to ensure readability, scalability, and maintainability:\nuv run ruff check --fix $(PY_PROJECT_ROOT)"; exit 1)
 	@echo Running code quality checks: pylint
-	@pylint $(PY_PROJECT_NAME) $(PYLINT_EXTRAS) && \
+	@uv run pylint $(PY_PROJECT_NAME) $(PYLINT_EXTRAS) && \
 		echo "🏆 Code quality good to go!" || \
 		(echo "💔 Please resolve all code quality warnings to ensure scalability and maintainability."; exit 1)
 
@@ -61,7 +84,7 @@ lint:
 .PHONY: typing
 typing:
 	@echo Running code typechecks: mypy
-	@mypy $(PY_PROJECT_ROOT) && \
+	@uv run mypy $(PY_PROJECT_ROOT) && \
 		echo "🏆 Code typechecks good to go!" || \
 		(echo "💔 Please resolve all typecheck warnings to ensure readability and stability."; exit 1)
 
@@ -69,7 +92,7 @@ typing:
 .PHONY: security
 security:
 	@echo Running security scans: bandit
-	@bandit -r -c=$(PY_PROJECT_ROOT)pyproject.toml $(PY_PROJECT_ROOT) && \
+	@uv run bandit -r -c=$(PY_SECURITY_ROOT)pyproject.toml $(PY_SECURITY_ROOT) && \
 		echo "🏆 Code security good to go!" || \
 		(echo "💔 Please resolve all security warnings to ensure user and developer safety."; exit 1)
 
@@ -77,35 +100,44 @@ security:
 # Does not enforce unit tests to simplify pushes, unit tests should be automated via pipelines with standardized env.
 # Ensure format is first, as it will often solve many style and lint failures.
 .PHONY: qa
-qa: format lint typing security
+qa: format docstrings order lint typing security
 
 # Run basic unit tests.
 .PHONY: test
 test:
-	@pytest $(PY_PROJECT_ROOT) --cov --cov-report="" && \
+	@uv run pytest $(PY_PROJECT_ROOT) --cov --cov-report="" && \
 		echo "🏆 Tests good to go!" || \
 		(echo "💔 Please resolve all test failures to ensure stability and quality."; exit 1)
 
 # Run the unit tests with a per-line coverage report, for finding the gaps `make test` only totals.
 .PHONY: coverage
 coverage:
-	@pytest $(PY_PROJECT_ROOT) --cov --cov-report=term-missing
+	@uv run pytest $(PY_PROJECT_ROOT) --cov --cov-report=term-missing
+
+# Check the installed dependency tree against the published advisories.
+# Deliberately not appended to `qa`: this check needs the network, and `hooks/pre-push` runs `qa` on every push,
+# including from a machine that is offline or behind a proxy. Run it when a requirement moves, and on a schedule,
+# rather than on every push.
+.PHONY: audit
+audit:
+	@echo Running dependency vulnerability scan: pip-audit
+	@uv run pip-audit && \
+		echo "🏆 Dependencies good to go!" || \
+		(echo "💔 Please resolve all advisories, by upgrading the requirement or recording why it does not apply."; exit 1)
 
 ##### Builds #####
 
 # Package the library into a pip installable.
 .PHONY: wheel
 wheel:
-	@python -m build && \
+	@uv build --wheel && \
 		echo "🏆 Wheel built successfully!" || \
 		(echo "💔 Wheel build failed, resolve errors and try again."; exit 1)
 
 # Perform a fully isolated build from the latest commit in a repository suite for release.
 .PHONY: release
 release:
-	@curl https://raw.githubusercontent.com/pyranha-labs/build-tools/refs/heads/main/build_python_release.sh -o build_python_release.sh
-	@chmod 755 build_python_release.sh
-	@./build_python_release.sh && \
+	@./tools/build_python_release.sh && \
 		echo "🏆 Release built successfully!" || \
 		(echo "💔 Release build failed, resolve errors and try again."; exit 1)
 
