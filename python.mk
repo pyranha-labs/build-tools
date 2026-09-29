@@ -23,10 +23,8 @@ update-py-make:
 	curl $(PY_MAKE_ORIGIN)/python.mk -o python.mk
 	curl $(PY_MAKE_ORIGIN)/tools/build_python_release.sh -o tools/build_python_release.sh
 	chmod 755 tools/build_python_release.sh
-	curl $(PY_MAKE_ORIGIN)/tools/check_pydocs.py -o tools/check_pydocs.py
-	chmod 755 tools/check_pydocs.py
-	curl $(PY_MAKE_ORIGIN)/tools/organize_pycode.py -o tools/organize_pycode.py
-	chmod 755 tools/organize_pycode.py
+	curl $(PY_MAKE_ORIGIN)/tools/pyqa.py -o tools/pyqa.py
+	chmod 755 tools/pyqa.py
 
 # Create python virtual environment for development/testing.
 .PHONY: venv
@@ -51,21 +49,21 @@ format:
 		echo "🏆 Code format good to go!" || \
 		(echo "💔 Please run formatter to ensure code consistency and quality:\nuv run ruff format $(PY_PROJECT_ROOT)"; exit 1)
 
-# Check that no private or property docstring publishes a contract that is reserved for public callers.
+# Check that public, private, and property docstrings match expected definition shapes.
 .PHONY: docstrings
 docstrings:
-	@echo Running docstring checks: check_pydocs
-	@uv run python $(PY_PROJECT_ROOT)tools/check_pydocs.py $(PY_SRC_ROOT) $(PYLINT_EXTRAS) && \
+	@echo Running docstring checks: pyqa --docs
+	@uv run python $(PY_PROJECT_ROOT)tools/pyqa.py --docs $(PY_SRC_ROOT) $(PYLINT_EXTRAS) && \
 		echo "🏆 Docstrings good to go!" || \
-		(echo "💔 Please fold a private or property docstring's sections into its summary."; exit 1)
+		(echo "💔 Please fold a private docstring's sections into its summary, state and spell the ones a public one asks for, and cut a summary line to one sentence."; exit 1)
 
 # Check that every module declares items in the most consistent order.
 .PHONY: order
 order:
-	@echo Running definition order checks: organize_pycode
-	@uv run python $(PY_PROJECT_ROOT)tools/organize_pycode.py $(PY_SRC_ROOT) && \
+	@echo Running definition order checks: pyqa --order
+	@uv run python $(PY_PROJECT_ROOT)tools/pyqa.py --order $(PY_SRC_ROOT) $(PYLINT_EXTRAS) && \
 		echo "🏆 Definition order good to go!" || \
-		(echo "💔 Please sort definitions so a reader can find one by name:\nuv run python tools/organize_pycode.py --fix"; exit 1)
+		(echo "💔 Please sort definitions so a reader can find one by name:\npython tools/pyqa.py --order --fix"; exit 1)
 
 # Check for common lint/complexity/style issues.
 # Ruff is used for isort, pycodestyle, pydocstyle. Pylint is used separately for greater coverage.
@@ -76,7 +74,7 @@ lint:
 		echo "🏆 Code/Doc style good to go!" || \
 		(echo "💔 Please resolve all style warnings to ensure readability, scalability, and maintainability:\nuv run ruff check --fix $(PY_PROJECT_ROOT)"; exit 1)
 	@echo Running code quality checks: pylint
-	@uv run pylint $(PY_PROJECT_NAME) $(PYLINT_EXTRAS) && \
+	@uv run pylint $(PY_SRC_ROOT) $(PYLINT_EXTRAS) && \
 		echo "🏆 Code quality good to go!" || \
 		(echo "💔 Please resolve all code quality warnings to ensure scalability and maintainability."; exit 1)
 
@@ -96,11 +94,19 @@ security:
 		echo "🏆 Code security good to go!" || \
 		(echo "💔 Please resolve all security warnings to ensure user and developer safety."; exit 1)
 
+# Check that every relative link between documents resolves to a file and to a heading inside it.
+.PHONY: links
+links:
+	@echo Running documentation link checks: pyqa --links
+	@uv run python $(PY_PROJECT_ROOT)tools/pyqa.py --links && \
+		echo "🏆 Documentation links good to go!" || \
+		(echo "💔 Please repoint a link whose file or heading moved."; exit 1)
+
 # Check full code quality suite (minus unit tests) against source.
 # Does not enforce unit tests to simplify pushes, unit tests should be automated via pipelines with standardized env.
 # Ensure format is first, as it will often solve many style and lint failures.
 .PHONY: qa
-qa: format docstrings order lint typing security
+qa: format docstrings order lint typing security links
 
 # Run basic unit tests.
 .PHONY: test
