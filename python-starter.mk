@@ -17,6 +17,5 @@ setup:
 	-git fetch upstream
 	@echo "🏆 Git set up complete!"
 	curl https://raw.githubusercontent.com/pyranha-labs/build-tools/refs/heads/main/python.mk -o python.mk
-	make clean-venv venv
-	make default
+	make update-py-make clean-venv venv default
 	@echo "🏆 Full set up complete!"

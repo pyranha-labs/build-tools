@@ -19,7 +19,7 @@ default: qa test
 # Update the shared python recipes (this file) outside initial setup.
 .PHONY: update-py-make
 update-py-make:
-	mkdir -v tools
+	mkdir -vp tools
 	curl $(PY_MAKE_ORIGIN)/python.mk -o python.mk
 	curl $(PY_MAKE_ORIGIN)/tools/build_python_release.sh -o tools/build_python_release.sh
 	chmod 755 tools/build_python_release.sh
