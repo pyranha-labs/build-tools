@@ -1,4 +1,9 @@
-"""`function_tester`, the `parametrize_test_case` expansion, and the plugins carrying every other shared fixture."""
+"""The declared-test-case machinery, and the plugins that carry everything else.
+
+`function_tester` runs one declared case against a callable and `pytest_generate_tests` expands the
+`parametrize_test_case` marker into pytest IDs. Every other fixture this suite shares lives in the plugins
+named below.
+"""
 
 import asyncio
 import inspect
@@ -63,7 +68,9 @@ def fixture_function_tester() -> Callable[..., None]:
     def function_tester(
         test: dict,
         func: Callable,
+        *,
         compare: Callable[[Any, Any], bool] | None = None,
+        drain: bool = True,
         monkeypatch: pytest.MonkeyPatch | None = None,
     ) -> None:
         """Run one test case against a callable.
@@ -76,24 +83,31 @@ def fixture_function_tester() -> Callable[..., None]:
             - To patch first, declare `patches` as (target, name, value) tuples and pass `monkeypatch`.
 
         Args:
-            test: The test case: optional `args`, `kwargs`, `patches`; exactly one of `returns`, `raises`, `attributes`.
+            test: The test case. Optional `args`, `kwargs`, and `patches`.
+                Exactly one of `returns`, `raises`, or `attributes` is mandatory.
             func: The callable to pass the arguments to, sync or async.
             compare: How to compare the actual and expected results. Defaults to equality.
+            drain: Whether to convert a generator result into a list before comparing.
             monkeypatch: pytest's patching fixture, required when the test case declares `patches`.
+
+        Raises:
+            ValueError: When the test case declares other than one result, or declares `patches` with no `monkeypatch`.
         """
         args, kwargs, raises, patches = _initialize_test(test)
-        if patches and monkeypatch:
+        if patches:
+            if monkeypatch is None:
+                raise ValueError("Test declares patches but no monkeypatch was passed")
             for patch in patches:
                 _patch_test(*patch, monkeypatch=monkeypatch)
         if raises:
             exception, match = raises
             with pytest.raises(exception, match=match):
                 result = _execute_test(func, *args, **kwargs)
-                if isinstance(result, GeneratorType):
+                if drain and isinstance(result, GeneratorType):
                     list(result)
         else:
             result = _execute_test(func, *args, **kwargs)
-            if isinstance(result, GeneratorType):
+            if drain and isinstance(result, GeneratorType):
                 result = list(result)
             _finalize_test(test, result, compare)
 
@@ -122,17 +136,21 @@ def _patch_test(target: Any, name: str, value: Any, monkeypatch: pytest.MonkeyPa
     # Allow a plain callable, such as a lambda, to stand in for an async one.
     if inspect.iscoroutinefunction(original) and not inspect.iscoroutinefunction(value):
 
-        async def patched(*args: Any, **kwargs: Any) -> Any:
+        async def await_value(*args: Any, **kwargs: Any) -> Any:
             """Await the replacement so it matches the signature it is standing in for."""
             result = value(*args, **kwargs)
             if asyncio.iscoroutine(result):
                 result = await result
             return result
 
-    # Allow a plain callable to stand in for a static method.
+        patched = await_value
+
+    # Allow a plain callable to stand in for a class or static method.
     attribute = inspect.getattr_static(target, name)
     if isinstance(attribute, staticmethod) and not isinstance(patched, staticmethod):
         patched = staticmethod(patched)
+    elif isinstance(attribute, classmethod) and not isinstance(patched, classmethod):
+        patched = classmethod(patched)
     monkeypatch.setattr(target, name, patched)
 
 
@@ -147,7 +165,7 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
         return
     args = list(mark.args)
     test_cases = args[1]
-    args[1] = list(test_cases.values())
+    args[1] = list(test_cases.values()) if isinstance(test_cases, dict) else list(test_cases)
     kwargs = dict(mark.kwargs)
-    kwargs["ids"] = [str(name) for name in test_cases]
+    kwargs["ids"] = [str(name) for name in (test_cases.keys() if isinstance(test_cases, dict) else test_cases)]
     metafunc.parametrize(*args, **kwargs)
