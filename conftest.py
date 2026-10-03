@@ -97,8 +97,8 @@ def fixture_function_tester() -> Callable[..., None]:
         if patches:
             if monkeypatch is None:
                 raise ValueError("Test declares patches but no monkeypatch was passed")
-            for patch in patches:
-                _patch_test(*patch, monkeypatch=monkeypatch)
+            for target, name, value in patches:
+                _patch_test(target, name, value, monkeypatch=monkeypatch)
         if raises:
             exception, match = raises
             with pytest.raises(exception, match=match):
@@ -128,7 +128,10 @@ def _initialize_test(
 
 def _patch_test(target: Any, name: str, value: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     """Apply one temporary patch while a test is running."""
-    original = getattr(target, name)
+    # Read through a class or static method to the function it wraps: reached through its class, a class method comes
+    # back already bound, and would read as no function at all.
+    attribute = inspect.getattr_static(target, name)
+    original = attribute.__func__ if isinstance(attribute, (classmethod, staticmethod)) else getattr(target, name)
     if not inspect.isfunction(original):
         monkeypatch.setattr(target, name, value)
         return
@@ -146,12 +149,23 @@ def _patch_test(target: Any, name: str, value: Any, monkeypatch: pytest.MonkeyPa
         patched = await_value
 
     # Allow a plain callable to stand in for a class or static method.
-    attribute = inspect.getattr_static(target, name)
     if isinstance(attribute, staticmethod) and not isinstance(patched, staticmethod):
         patched = staticmethod(patched)
     elif isinstance(attribute, classmethod) and not isinstance(patched, classmethod):
         patched = classmethod(patched)
     monkeypatch.setattr(target, name, patched)
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Add the `parametrize_test_case` marker to the pytest configuration.
+
+    Args:
+        config: The pytest configuration.
+    """
+    config.addinivalue_line(
+        "markers",
+        "parametrize_test_case: Mark test as parametrized with a test case mapping that supplies the pytest IDs.",
+    )
 
 
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:

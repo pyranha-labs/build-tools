@@ -17,14 +17,12 @@ default: qa test
 ##### Development Setups and Configurations #####
 
 # Update the shared python recipes (this file) outside initial setup.
-.PHONY: update-py-make
-update-py-make:
+.PHONY: update-python-mk
+update-python-mk:
 	mkdir -vp tools
-	curl $(PY_MAKE_ORIGIN)/python.mk -o python.mk
-	curl $(PY_MAKE_ORIGIN)/tools/build_python_release.sh -o tools/build_python_release.sh
-	chmod 755 tools/build_python_release.sh
-	curl $(PY_MAKE_ORIGIN)/tools/pyqa.py -o tools/pyqa.py
-	chmod 755 tools/pyqa.py
+	curl -fsSL $(PY_MAKE_ORIGIN)/python.mk -o python.mk
+	curl -fsSL $(PY_MAKE_ORIGIN)/tools/build_python_release.sh -o tools/build_python_release.sh
+	curl -fsSL $(PY_MAKE_ORIGIN)/tools/pyqa.py -o tools/pyqa.py
 
 # Create python virtual environment for development/testing.
 .PHONY: venv
@@ -47,7 +45,23 @@ format:
 	@echo Running code format checks: black/ruff
 	@uv run ruff format --check --diff $(PY_PROJECT_ROOT) && \
 		echo "🏆 Code format good to go!" || \
-		(echo "💔 Please run formatter to ensure code consistency and quality:\nuv run ruff format $(PY_PROJECT_ROOT)"; exit 1)
+		(echo "💔 Please run 'make format-fix' to ensure code consistency and quality."; exit 1)
+
+# Rewrite source code into the format `make format` checks for.
+.PHONY: format-fix
+format-fix:
+	@echo Running code formatter: ruff
+	@uv run ruff format $(PY_PROJECT_ROOT) && \
+		echo "🏆 Code format fixed!" || \
+		(echo "💔 Please resolve the formatter errors above, then run 'make format-fix' again."; exit 1)
+
+# Check that no debugging call is left in, and that every exemption kept for one still exempts something.
+.PHONY: debugging
+debugging:
+	@echo Running debugging call checks: pyqa --debugging
+	@uv run python $(PY_PROJECT_ROOT)tools/pyqa.py --debugging $(PY_SRC_ROOT) $(PYLINT_EXTRAS) && \
+		echo "🏆 Debugging calls good to go!" || \
+		(echo "💔 Please remove debugging calls and cut stale ones."; exit 1)
 
 # Check that public, private, and property docstrings match expected definition shapes.
 .PHONY: docstrings
@@ -55,7 +69,7 @@ docstrings:
 	@echo Running docstring checks: pyqa --docs
 	@uv run python $(PY_PROJECT_ROOT)tools/pyqa.py --docs $(PY_SRC_ROOT) $(PYLINT_EXTRAS) && \
 		echo "🏆 Docstrings good to go!" || \
-		(echo "💔 Please fold a private docstring's sections into its summary, state and spell the ones a public one asks for, and cut a summary line to one sentence."; exit 1)
+		(echo "💔 Please fold a private docstring's sections into its summary, state the ones a public one asks for, and keep summary lines to one sentence."; exit 1)
 
 # Check that every module declares items in the most consistent order.
 .PHONY: order
@@ -63,7 +77,15 @@ order:
 	@echo Running definition order checks: pyqa --order
 	@uv run python $(PY_PROJECT_ROOT)tools/pyqa.py --order $(PY_SRC_ROOT) $(PYLINT_EXTRAS) && \
 		echo "🏆 Definition order good to go!" || \
-		(echo "💔 Please sort definitions so a reader can find one by name:\npython tools/pyqa.py --order --fix"; exit 1)
+		(echo "💔 Please sort definitions so a reader can find them by name; 'make order-fix' sorts most."; exit 1)
+
+# Sort definitions into the order `make order` checks for.
+.PHONY: order-fix
+order-fix:
+	@echo Running definition order fixes: pyqa --order --fix
+	@uv run python $(PY_PROJECT_ROOT)tools/pyqa.py --order --fix $(PY_SRC_ROOT) $(PYLINT_EXTRAS) && \
+		echo "🏆 Definition order fixed!" || \
+		(echo "💔 Please resolve the errors above, then run 'make order-fix' again."; exit 1)
 
 # Check for common lint/complexity/style issues.
 # Ruff is used for isort, pycodestyle, pydocstyle. Pylint is used separately for greater coverage.
@@ -90,7 +112,7 @@ typing:
 .PHONY: security
 security:
 	@echo Running security scans: bandit
-	@uv run bandit -r -c=$(PY_SECURITY_ROOT)pyproject.toml $(PY_SECURITY_ROOT) && \
+	@uv run bandit -r -c=pyproject.toml $(PY_SECURITY_ROOT) && \
 		echo "🏆 Code security good to go!" || \
 		(echo "💔 Please resolve all security warnings to ensure user and developer safety."; exit 1)
 
@@ -106,7 +128,7 @@ links:
 # Does not enforce unit tests to simplify pushes, unit tests should be automated via pipelines with standardized env.
 # Ensure format is first, as it will often solve many style and lint failures.
 .PHONY: qa
-qa: format docstrings order lint typing security links
+qa: format debugging docstrings order lint typing security links
 
 # Run basic unit tests.
 .PHONY: test

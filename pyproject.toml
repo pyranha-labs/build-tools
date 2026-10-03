@@ -1,0 +1,239 @@
+[project]
+name = "build-tools"
+version = "1.0.0"
+requires-python = ">=3.12"
+
+[dependency-groups]
+dev = [
+    "bandit>=1.9.4",
+    "mypy>=2.3.1",
+    "pip-audit>=2.10.1",
+    "psutil>=7.0.0",
+    "pylint>=4.0.8",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
+    "pytest-xdist>=3.8.0",
+    "ruff>=0.16.8",
+]
+
+[tool.bandit]
+targets = [
+    "tools"
+]
+exclude_dirs = [
+    # Sibling worktrees live in ".claude/worktrees", each a full checkout, so a scan of the project root walks
+    # into every one and fails the gate on another branch's code. Every entry is matched as a substring of the
+    # full path bandit walks, which only reads as "under the scan root" while that root is relative; the `security`
+    # recipe scopes the root of the scan to relative location instead of git root for exactly that reason.
+    ".claude",
+    ".venv",
+    "/test/",
+    "conftest.py",
+]
+
+[tool.coverage.report]
+fail_under = 100
+
+[tool.coverage.run]
+branch = true
+omit = [
+    # Test folders contain test code that do not need to be reported on. They are the report.
+    "*/test/*",
+    "conftest.py",
+]
+
+[tool.pylint]
+# The floor `requires-python` declares, which pylint does not read itself.
+py-version = "3.12"
+# Pylint requires a full list of disables, or a full list of includes, and cannot be partially overridden.
+# The following list starts with the pylint defaults, followed by project specifics.
+# Do not modify the pylint defaults without adding a comment as to why, and only comment out instead of remove.
+disable = [
+    "raw-checker-failed",
+    "bad-inline-option",
+    "locally-disabled",
+    "file-ignored",
+    "suppressed-message",
+    # I0021 useless-suppression, catch retired ignores.
+    # `# pylint: disable=` whose message would not have fired is indistinguishable from a critical one,
+    # so without this there is nothing retires an ignore once the code stops needing it. Commenting out
+    # does not fail on hit, since it is informational by default. Kept visible for comparing to defaults.
+    # "useless-suppression",
+    "deprecated-pragma",
+    "use-symbolic-message-instead",
+    # Project specific modifications.
+    # W1203, allow f-strings to be used in logging messages.
+    "logging-fstring-interpolation",
+    # C0301 line too long, up to maintainers' best judgment.
+    "line-too-long",
+    # R0801 duplicate code, up to maintainers' best judgment.
+    "duplicate-code",
+    # R0903 too-few-public-methods, custom classes are allowed to have a low number of public functions.
+    "too-few-public-methods",
+    # C0415 import-outside-toplevel, standard usage by modular plugin infrastructure to prevent import loops.
+    "import-outside-toplevel",
+    # R0917 too-many-positional-arguments, duplicate of too-many-arguments.
+    "too-many-positional-arguments",
+    # R0401 cyclic-import, false alarms and python can natively catch.
+    "cyclic-import",
+]
+fail-on = [
+    # I0021 is informational, and sets no failure in pylint's exit code, until manually set to fail.
+    "useless-suppression",
+]
+
+[tool.pylint.MASTER]
+# Use jobs 0 to autodetect CPUs on system for parallel performance.
+jobs = 0
+ignore = [
+    "^\\..*",
+    "__pycache__",
+    "build",
+    "conftest.py",
+    "dist",
+    # Skip test files from lint to avoid littering with unnecessary ignores.
+    # Test files are known to perform logic that is often non-standard in order to test all scenarios.
+    "test",
+]
+
+[tool.pylint.DESIGN]
+# Decreased limits.
+max-returns = 2
+
+[tool.pylint.TYPECHECK]
+# Property setters and getters are dynamic attributes, allow these to be overridden in subclasses.
+generated-members = "fset,fget"
+
+[tool.pytest.ini_options]
+addopts = "-n auto --maxprocesses=8"
+asyncio_mode = "auto"
+norecursedirs = ".* __pycache__ build dist site-packages virtualenvs"
+filterwarnings = [
+    # Promote all warnings to errors to ensure performance, forwards compatibility, and code quality.
+    "error",
+]
+markers = [
+    "parametrize_test_case: Mark test as parametrized with a test case mapping that supplies the pytest IDs.",
+]
+
+[tool.mypy]
+# Checked against the floor `requires-python` declares, so a standard library API newer than the floor is an error
+# here rather than a failure on the oldest interpreter a project supports. mypy does not read `requires-python` itself.
+python_version = "3.12"
+exclude = "(__pycache__|build|dist)/"
+ignore_missing_imports = true
+warn_unused_configs = true
+# The `type: ignore` counterpart to pylint's useless-suppression: an ignore that suppresses nothing reads as
+# load-bearing while doing nothing. Unlike I0021 this reports as an `error`, so it fails the run on its own.
+warn_unused_ignores = true
+show_error_codes = true
+# A warm cache answers in about a quarter second where a cold one takes seconds, and following imports is what makes
+# that gap worth closing: every run re-reads the whole import graph without it.
+incremental = true
+# Imports are followed so `call-arg` and `arg-type` can see a callee defined in another module. Under "skip" every
+# imported symbol is Any, which silently reduces both checks to same-module calls only.
+follow_imports = "normal"
+# No `disable_error_code` here: the package is held to mypy's whole default set. There is no option for an enable list,
+# so anything switched off has to be named in a disable list.
+disallow_untyped_defs = true
+# Optional codes, on top of the defaults. Each either fires on this package or has live surface area in it, and none
+# of them duplicates a check pylint already runs.
+enable_error_code = [
+    # A boolean test on a type implementing neither `__bool__` nor `__len__` is a constant, so the branch it guards is
+    # unreachable - typically an exception object read as if it were its own message.
+    "truthy-bool",
+    # `@override` is required on every overridden method, and pylint does not check it - nor does it read test modules,
+    # where many of the overrides live.
+    "explicit-override",
+    # A bare `# type: ignore` silences whatever else breaks on that line later, so each one names its code.
+    "ignore-without-code",
+    # A `reveal_type` left behind after debugging.
+    "unimported-reveal",
+]
+
+# Ruff replaces pycodestyle, pydocstyle, black, and isort, and carries the rule families that no other gate covers.
+# pylint is used separately to maximize coverage, and a family it already checks is left out rather than run twice.
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.ruff.lint]
+select = [
+    "I", # isort
+    "E", # pycodestyle
+    "W", # pycodestyle
+    "D", # pydocstyle
+    "F", # pyflakes,
+    "Q", # flake8-quotes, so `ruff check` enforces the quote style and not only `ruff format`.
+    "COM", # flake8-commas, for trailing comma placement in multi-line structures. See COM812 in the ignores.
+    # flake8-implicit-str-concat. It only catches single-line and backslash-continued concatenation, so a message
+    # split across several lines is still a review item rather than a lint failure.
+    "ISC",
+    # flake8-async. The one gate that reads inside `async def`: a blocking open, sleep, subprocess or HTTP call
+    # there stalls the loop for every other request, and nothing else here would report it. See "ignore" notes
+    # for why ASYNC110 and ASYNC119 are held back.
+    "ASYNC",
+    # flake8-bugbear, for likely bugs and design problems.
+    "B",
+    # perflint, for loop shapes a comprehension states more directly.
+    "PERF",
+    # flake8-datetimez. Naive datetimes are bugs in a service that does arithmetic across timezones.
+    "DTZ",
+    # eradicate, for commented-out code. The one rule aimed at what accumulates rather than what breaks.
+    "ERA",
+    # flake8-logging. Not flake8-logging-format: this checks logger construction and API misuse, and has no opinion
+    # about f-strings, which pylint is configured to allow.
+    "LOG",
+    # flake8-pie. Carried for two rules above all: a duplicate field on a model silently keeps the last,
+    # and a duplicate enum value silently aliases two names.
+    "PIE",
+    # pyupgrade. `requires-python` is what scopes it: ruff reads the declared floor as its target, so the family
+    # reports a spelling only an interpreter below that floor needed. Modules are expected to open with
+    # `from __future__ import annotations`, which keeps annotations lazy on 3.12 as PEP 649 makes them on 3.14, so a
+    # quoted forward reference buys nothing and UP037 reports one. Nothing enforces the import.
+    "UP",
+    # RUF100 only, the `noqa` counterpart to pylint's useless-suppression and mypy's  warn_unused_ignores: without it
+    # a directive naming a rule no gate runs reads as critical while suppressing nothing. The rest of the RUF family
+    # is for separate questions.
+    "RUF100",
+]
+ignore = [
+    # Ignore E402 import not at top of file. Pylint will catch, and we do not want double ignore lines in the code.
+    # Ignore E501 line too long. Up to maintainer's best judgment.
+    # Ignore E722 bare except. Pylint will catch, and we do not want double ignore lines in the code.
+    "E402",
+    "E501",
+    "E722",
+    # Ignore D102, Missing docstring in public method. Pylint will catch, and detects overrides properly.
+    # Ignore D105, Missing docstring in magic method. Pylint will catch, and detects overrides properly.
+    "D102",
+    "D105",
+    # Ignore Q003, avoidable escaped quote. It conflicts with the formatter, which owns that decision.
+    "Q003",
+    # Ignore COM812, missing trailing comma. `ruff format` already adds the comma to every structure that stays
+    # multi-line, so the rule never fires on formatted code. Its autofix does the opposite though: it pins a
+    # structure open with a magic trailing comma that the formatter would otherwise collapse onto one line,
+    # so the final layout would depend on whether `ruff check --fix` or `ruff format` ran first. The formatter
+    # owns the decision, and ignoring this also clears the conflict warning it prints.
+    "COM812",
+]
+# Preview required for pycodestyle rules as of ruff 0.4.0.
+preview = true
+# ruff's own defaults plus `pyqa`, the tag pyqa's markers open with. ERA001 exempts a comment opening with a task
+# tag, and a pyqa marker on its own line is assignment-shaped Python it would otherwise flag as commented-out code.
+# No `TD` or `FIX` rule is selected, so the tag has no other effect.
+task-tags = ["TODO", "FIXME", "XXX", "pyqa"]
+
+[tool.ruff.lint.flake8-quotes]
+docstring-quotes = "double"
+inline-quotes = "double"
+multiline-quotes = "double"
+
+[tool.ruff.lint.isort]
+force-single-line = true
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
