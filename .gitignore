@@ -60,5 +60,15 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
+# Except project skills, which are version-controlled so a repo can rerun common or complex workflows.
+!.claude/
+.claude/*
+!.claude/skills/
+
 # Local development helpers
 activate
+uv.lock
+# Uncomment these for child projects.
+#python.mk
+#build_python_release.sh
+#pyqa.py

@@ -55,8 +55,11 @@ The Python common Makefile contains the following recipes:
 - `venv` - Create a Python virtual environment for development/testing.
 - `clean-venv` - Remove the Python virtual environment.
 - `format` - Check source code format for consistent patterns.
-- `docstring` - Check source code docstrings for consistent declarations.
-- `order` - Check source code docstrings for consistent content order.
+- `format-fix` - Rewrite source code into the format `format` checks for.
+- `debugging` - Check source code for debugging calls left in, and exemptions that exempt nothing.
+- `docstrings` - Check source code docstrings for consistent declarations.
+- `order` - Check source code for consistent content order.
+- `order-fix` - Sort source code into the order `order` checks for.
 - `lint` - Check for common lint/complexity/style issues.
 - `typing` - Check typehints for static typing best practices.
 - `security` - Check for common security issues/best practices.
@@ -71,7 +74,7 @@ The Python common Makefile contains the following recipes:
 
 The process is performed automatically by the `make release` shared python recipe. To use the file manually:
 
-1. Copy the [build_python_release.sh](./build_python_release.sh) to `build_python_release.sh` in an existing project.
+1. Copy the [build_python_release.sh](./tools/build_python_release.sh) to `build_python_release.sh` in an existing project.
 1. Run `build_python_release.sh`.
 1. Follow the steps printed to upload.
 

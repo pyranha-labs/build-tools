@@ -7,7 +7,7 @@ PYLINT_EXTRAS := <REMOVE OR REPLACE WITH EXTRA FILES/FOLDERS>
 
 ##### Initial Development Setups and Configurations #####
 
-UPSTREAM := git@github.com:<REPLACE WITH GITHUB PROJECT ORG/REPO PATH>.get
+UPSTREAM := <REPLACE WITH GITHUB PROJECT ORG/REPO PATH; e.g., git@github.com:myorg/myproject.git>
 
 # Set up initial environment for development.
 .PHONY: setup
@@ -16,6 +16,6 @@ setup:
 	-git remote add upstream $(UPSTREAM)
 	-git fetch upstream
 	@echo "🏆 Git set up complete!"
-	curl https://raw.githubusercontent.com/pyranha-labs/build-tools/refs/heads/main/python.mk -o python.mk
-	make update-py-make clean-venv venv default
+	curl -fsSL https://raw.githubusercontent.com/pyranha-labs/build-tools/refs/heads/main/python.mk -o python.mk
+	make update-python-mk clean-venv venv default
 	@echo "🏆 Full set up complete!"
