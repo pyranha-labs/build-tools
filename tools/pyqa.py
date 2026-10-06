@@ -325,7 +325,12 @@ def _bodies_of(tree: ast.Module) -> list[tuple[list[ast.stmt], bool, frozenset[s
     return bodies
 
 
-def _body_items(segment: list[ast.stmt], spans: dict[int, tuple[int, int]], in_class: bool) -> list[Item]:
+def _body_items(
+    segment: list[ast.stmt],
+    spans: dict[int, tuple[int, int]],
+    in_class: bool,
+    deferred: bool,
+) -> list[Item]:
     """Describe one run of movable statements, everything the sort and the rewrite need."""
     items: list[Item] = []
     for index, node in enumerate(segment):
@@ -340,7 +345,7 @@ def _body_items(segment: list[ast.stmt], spans: dict[int, tuple[int, int]], in_c
                 key=_sort_key(node, index, in_class),
                 name=getattr(node, "name", None) or ", ".join(sorted(provides)) or "statement",
                 provides=provides,
-                requires=_referenced_names(node),
+                requires=_referenced_names(node, deferred),
             ),
         )
     return items
@@ -506,6 +511,16 @@ def _declared_sections(node: ast.AsyncFunctionDef | ast.FunctionDef) -> tuple[st
 def _decorators(node: ast.AsyncFunctionDef | ast.FunctionDef) -> set[str]:
     """Each decorator on this definition, spelled the way `ast.unparse` spells it."""
     return {ast.unparse(one) for one in node.decorator_list}
+
+
+def _defers_annotations(tree: ast.Module) -> bool:
+    """Whether this module imports `annotations` from `__future__`, which stores its annotations unevaluated."""
+    return any(
+        isinstance(one, ast.ImportFrom)
+        and one.module == "__future__"
+        and any(alias.name == "annotations" for alias in one.names)
+        for one in tree.body
+    )
 
 
 def _defined_names(node: ast.stmt) -> frozenset[str]:
@@ -948,10 +963,12 @@ def _out_of_order(
     markers: list[Marker],
 ) -> Iterator[tuple[list[ast.stmt], bool, list[Item], list[int]]]:
     """Every run out of order in one module, with its body, whether that is a class body, and the order it belongs in."""
-    for body, in_class, outer in _bodies_of(ast.parse(source)):
+    tree = ast.parse(source)
+    deferred = _defers_annotations(tree)
+    for body, in_class, outer in _bodies_of(tree):
         spans = _block_spans(body, lines)
         for segment in _segments(body, spans, _held(body, pinned, in_class, markers)):
-            items = _body_items(segment, spans, in_class)
+            items = _body_items(segment, spans, in_class, deferred)
             order = _ordered(items, _bound_above(body, segment[0], outer))
             if order != list(range(len(items))):
                 yield body, in_class, items, order
@@ -1056,7 +1073,7 @@ def _read_edges(index: int, binders: list[int], bound: bool) -> list[tuple[int, 
     return edges
 
 
-def _referenced_names(node: ast.stmt) -> frozenset[str]:
+def _referenced_names(node: ast.stmt, deferred: bool) -> frozenset[str]:
     """The names this statement reads the moment it executes, before anything calls into it."""
     # A class body counts, its annotations included, since libraries such as pydantic resolve those while it builds
     # the model, and so do its method decorators, defaults, and nested classes, which all run while the class is built.
@@ -1066,10 +1083,14 @@ def _referenced_names(node: ast.stmt) -> frozenset[str]:
         sources.extend(node.bases)
         sources.extend(keyword.value for keyword in node.keywords)
         sources.extend(child for child in node.body if not isinstance(child, DEFINITIONS))
-        names.update(*(_referenced_names(child) for child in node.body if isinstance(child, DEFINITIONS)))
+        names.update(*(_referenced_names(child, deferred) for child in node.body if isinstance(child, DEFINITIONS)))
     elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
         arguments = node.args
         sources.extend(one for one in (*arguments.defaults, *arguments.kw_defaults) if one is not None)
+    elif deferred and isinstance(node, ast.AnnAssign):
+        # A deferred annotation is a string nothing evaluates as the statement runs, so only its target and value read.
+        # A class body still reads its own above, since a model resolves those strings while the class is built.
+        sources.extend(one for one in (node.target, node.value) if one is not None)
     else:
         sources.append(node)
     for source in sources:
