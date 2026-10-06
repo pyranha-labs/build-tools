@@ -1183,6 +1183,25 @@ TEST_CASES = {
             "args": ["class Alpha(Yankee, Zulu): ...\n\n\nclass Zulu: ...\n\n\nclass Yankee: ...\n"],
             "returns": "class Yankee: ...\n\n\nclass Zulu: ...\n\n\nclass Alpha(Yankee, Zulu): ...\n",
         },
+        # `from __future__ import annotations` stores a module annotation as a string that nothing evaluates.
+        "a module annotation is not read while annotations are deferred": {
+            "args": [
+                "from __future__ import annotations\n\nREGISTRY: dict[str, Widget] = {}\nOTHER = 1\n\n\nclass Widget: ...\n"
+            ],
+            "returns": "from __future__ import annotations\n\nREGISTRY: dict[str, Widget] = {}\nOTHER = 1\n\n\nclass Widget: ...\n",
+        },
+        "a module annotation is read while annotations are evaluated": {
+            "args": ["REGISTRY: dict[str, Widget] = {}\nOTHER = 1\n\n\nclass Widget: ...\n"],
+            "returns": "class Widget: ...\n\n\nREGISTRY: dict[str, Widget] = {}\nOTHER = 1\n",
+        },
+        "the value of an annotated assignment is read while annotations are deferred": {
+            "args": ["from __future__ import annotations\n\nLIMIT: int = zebra()\n\n\ndef zebra(): ...\n"],
+            "returns": "from __future__ import annotations\n\n\ndef zebra(): ...\n\n\nLIMIT: int = zebra()\n",
+        },
+        "a class body annotation is read while annotations are deferred": {
+            "args": ["from __future__ import annotations\n\n\nclass Model:\n    item: Widget\n\n\nclass Widget: ...\n"],
+            "returns": "from __future__ import annotations\n\n\nclass Widget: ...\n\n\nclass Model:\n    item: Widget\n",
+        },
         # A run opens below the statement that stays, so the binding the read sees sits above the run, not in it.
         "a read stays above a later rebinding of the name it reads": {
             "args": ["DEBUG = False\nprint(DEBUG)\nVERBOSE = DEBUG\nDEBUG = True\n"],
