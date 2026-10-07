@@ -17,7 +17,7 @@ setup:
 	-git fetch upstream
 	@echo "🏆 Git set up complete!"
 	@# Bootstrap python.mk once; from then on it pulls itself and other utilities whenever make runs.
-	@[ -f python.mk ] || (tmp_dir="$$(mktemp -d)" && trap 'rm -r "$$tmp_dir"' EXIT && \
+	@[ -f python.mk ] || (tmp_dir="$$(mktemp -d)" && trap 'rm -rf "$$tmp_dir"' EXIT && \
 		git clone --quiet --depth 1 --no-checkout git@github.com:pyranha-labs/build-tools.git "$$tmp_dir" && \
 		git -C "$$tmp_dir" show HEAD:python.mk > python.mk)
 	$(MAKE) clean-venv venv default
