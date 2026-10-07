@@ -22,7 +22,7 @@ default: qa test
 # Pull the shared quality files from upstream, read-only so local edits are not lost to a pull.
 # The repository can be internal, so the pull uses git over SSH; raw file URLs refuse an unauthenticated request.
 define PY_MAKE_PULL
-tmp_dir="$$(mktemp -d)" && trap 'rm -r "$$tmp_dir"' EXIT && \
+tmp_dir="$$(mktemp -d)" && trap 'rm -rf "$$tmp_dir"' EXIT && \
 	git clone --quiet --depth 1 --no-checkout --single-branch --branch $(PY_MAKE_REF) $(PY_MAKE_REPO) "$$tmp_dir" && \
 	git -C "$$tmp_dir" show HEAD:python.mk > "$$tmp_dir/python.mk" && \
 	git -C "$$tmp_dir" show HEAD:tools/build_python_release.sh > "$$tmp_dir/build_python_release.sh" && \
