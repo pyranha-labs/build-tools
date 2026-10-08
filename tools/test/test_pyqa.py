@@ -514,7 +514,7 @@ TEST_CASES = {
     "tools": {
         "a bare `tool` decorator states a contract the model reads": {"args": ["@tool"], "returns": ()},
         "a called `tool` decorator states one too": {"args": ["@tool(strict=True)"], "returns": ()},
-        "an file's `tool` decorator states one too": {"args": ["@file.tool"], "returns": ()},
+        "a file's `tool` decorator states one too": {"args": ["@file.tool"], "returns": ()},
         "a called file's `tool` decorator states one too": {"args": ["@file.tool(strict=True)"], "returns": ()},
         "any other decorator leaves a private docstring holding no section": {
             "args": ["@functools.cache"],
