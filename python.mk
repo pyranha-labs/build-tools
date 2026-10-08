@@ -67,7 +67,7 @@ clean-venv:
 ##### Quality Assurance #####
 
 # Check the installed dependency tree against the published advisories. Deliberately not appended to `qa`: this check
-# needs the network, and `pre-push` hooks runs`qa` on every push, including from a machine that is offline or behind
+# needs the network, and `pre-push` hooks runs `qa` on every push, including from a machine that is offline or behind
 # a proxy. Run it when a requirement moves, and on a schedule, rather than on every push.
 .PHONY: audit
 audit:
