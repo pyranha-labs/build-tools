@@ -130,7 +130,7 @@ def _search(query: str) -> str:
     return query
 '''
 
-TEST_CASES = {
+TESTS = {
     "slug": {
         "a plain heading lowercases and hyphenates": {
             "args": ["Backend providers"],
@@ -1355,9 +1355,9 @@ def test_a_bare_fragment_resolves_against_its_own_document(tmp_path: pathlib.Pat
     assert [one.detail for one in findings] == ["no heading `#there` in `a.md`"]
 
 
-@pytest.mark.parametrize_test_case("test_case", TEST_CASES["debugging"])
+@pytest.mark.parametrize_tests(TESTS["debugging"])
 def test_a_debugging_call_is_reported_unless_its_own_line_exempts_it(
-    test_case: dict,
+    test: dict,
     pyqa_report: Callable,
     function_tester: Callable,
 ) -> None:
@@ -1366,12 +1366,12 @@ def test_a_debugging_call_is_reported_unless_its_own_line_exempts_it(
     Mutation: match the callee by its last name rather than its whole spelling in `_debug_findings`. `self.print()`,
     and every other method sharing one of these names, reports as a debugging call.
     """
-    function_tester(test_case, functools.partial(pyqa_report, flag="--debugging"))
+    function_tester(test, functools.partial(pyqa_report, flag="--debugging"))
 
 
-@pytest.mark.parametrize_test_case("test_case", TEST_CASES["stale"])
+@pytest.mark.parametrize_tests(TESTS["stale"])
 def test_a_debugging_exemption_that_exempts_nothing_is_reported(
-    test_case: dict,
+    test: dict,
     pyqa_report: Callable,
     function_tester: Callable,
 ) -> None:
@@ -1380,12 +1380,12 @@ def test_a_debugging_exemption_that_exempts_nothing_is_reported(
     Mutation: report only the families no comment can exempt in `_is_stale`, dropping the judged check. A
     `disable=DBG002` left behind after its call is deleted reads as load-bearing.
     """
-    function_tester(test_case, functools.partial(pyqa_report, flag="--debugging"))
+    function_tester(test, functools.partial(pyqa_report, flag="--debugging"))
 
 
-@pytest.mark.parametrize_test_case("test_case", TEST_CASES["declarations"])
+@pytest.mark.parametrize_tests(TESTS["declarations"])
 def test_a_declaration_is_held_to_the_contract_its_implementations_point_at(
-    test_case: dict,
+    test: dict,
     tmp_path: pathlib.Path,
     capsys: pytest.CaptureFixture,
     function_tester: Callable,
@@ -1404,12 +1404,12 @@ def test_a_declaration_is_held_to_the_contract_its_implementations_point_at(
         printed = capsys.readouterr().out.splitlines()
         return tuple(one.removeprefix(f"{tmp_path}/") for one in printed if ":1: DSC002" in one)
 
-    function_tester(test_case, reported)
+    function_tester(test, reported)
 
 
-@pytest.mark.parametrize_test_case("test_case", TEST_CASES["docs_markers"])
+@pytest.mark.parametrize_tests(TESTS["docs_markers"])
 def test_a_docstring_finding_is_exempted_where_a_comment_can_sit(
-    test_case: dict,
+    test: dict,
     pyqa_report: Callable,
     function_tester: Callable,
 ) -> None:
@@ -1418,7 +1418,7 @@ def test_a_docstring_finding_is_exempted_where_a_comment_can_sit(
     Mutation: anchor `DSC003` at the docstring's first line in `_overruns`. A multi-line docstring's run-on summary can
     never be exempted, since no comment fits on that line.
     """
-    function_tester(test_case, functools.partial(pyqa_report, flag="--docs"))
+    function_tester(test, functools.partial(pyqa_report, flag="--docs"))
 
 
 def test_a_docstring_in_a_test_module_is_still_read(tmp_path: pathlib.Path, capsys: pytest.CaptureFixture) -> None:
@@ -1435,9 +1435,9 @@ def test_a_docstring_in_a_test_module_is_still_read(tmp_path: pathlib.Path, caps
     ]
 
 
-@pytest.mark.parametrize_test_case("test_case", TEST_CASES["anchors"])
+@pytest.mark.parametrize_tests(TESTS["anchors"])
 def test_a_document_produces_exactly_the_fragments_a_link_may_name(
-    test_case: dict,
+    test: dict,
     tmp_path: pathlib.Path,
     function_tester: Callable,
 ) -> None:
@@ -1449,12 +1449,12 @@ def test_a_document_produces_exactly_the_fragments_a_link_may_name(
         path.write_text(body, encoding="utf-8")
         return pyqa._anchors(path)
 
-    function_tester(test_case, anchors)
+    function_tester(test, anchors)
 
 
-@pytest.mark.parametrize_test_case("test_case", TEST_CASES["file_markers"])
+@pytest.mark.parametrize_tests(TESTS["file_markers"])
 def test_a_file_marker_covers_its_whole_module(
-    test_case: dict,
+    test: dict,
     pyqa_report: Callable,
     function_tester: Callable,
 ) -> None:
@@ -1463,7 +1463,7 @@ def test_a_file_marker_covers_its_whole_module(
     Mutation: seed each line marker's scope empty rather than with the file entries in `_markers`. A line entry under a
     file entry of its code reads as in use, so a marker the module no longer needs is never cut.
     """
-    function_tester(test_case, pyqa_report)
+    function_tester(test, pyqa_report)
 
 
 def test_a_file_named_as_a_root_is_read_alone(tmp_path: pathlib.Path, capsys: pytest.CaptureFixture) -> None:
@@ -1496,19 +1496,19 @@ def test_a_file_named_as_a_root_is_read_only_by_the_groups_of_its_kind(
     assert output.startswith(f"scanned 0 documents under {tmp_path / 'one.py'}:")
 
 
-@pytest.mark.parametrize_test_case("test_case", TEST_CASES["glob"])
-def test_a_glob_matches_segment_by_segment(test_case: dict, function_tester: Callable) -> None:
+@pytest.mark.parametrize_tests(TESTS["glob"])
+def test_a_glob_matches_segment_by_segment(test: dict, function_tester: Callable) -> None:
     """A pattern's segments match a path's one by one, `*` within a segment and `**` across any number of them.
 
     Mutation: let `**` stand for one segment or more in `_glob`. A double star between two names no longer matches the
     path that holds the two side by side.
     """
-    function_tester(test_case, pyqa._glob)
+    function_tester(test, pyqa._glob)
 
 
-@pytest.mark.parametrize_test_case("test_case", TEST_CASES["groups"])
+@pytest.mark.parametrize_tests(TESTS["groups"])
 def test_a_group_flag_runs_that_check_and_no_other(
-    test_case: dict,
+    test: dict,
     tmp_path: pathlib.Path,
     capsys: pytest.CaptureFixture,
     monkeypatch: pytest.MonkeyPatch,
@@ -1529,22 +1529,22 @@ def test_a_group_flag_runs_that_check_and_no_other(
         printed = capsys.readouterr().out.splitlines()
         return tuple(sorted({one.split()[1] for one in printed if ":1: " in one}))
 
-    function_tester(test_case, reported)
+    function_tester(test, reported)
 
 
-@pytest.mark.parametrize_test_case("test_case", TEST_CASES["sections"])
-def test_a_header_reads_as_the_section_it_misspells(test_case: dict, function_tester: Callable) -> None:
+@pytest.mark.parametrize_tests(TESTS["sections"])
+def test_a_header_reads_as_the_section_it_misspells(test: dict, function_tester: Callable) -> None:
     """A header near enough to a section's name opens that section, and one further off opens none."""
-    function_tester(test_case, pyqa._section_of)
+    function_tester(test, pyqa._section_of)
 
 
-@pytest.mark.parametrize_test_case("test_case", TEST_CASES["slug"])
+@pytest.mark.parametrize_tests(TESTS["slug"])
 def test_a_heading_reduces_to_the_fragment_it_is_served_under(
-    test_case: dict,
+    test: dict,
     function_tester: Callable,
 ) -> None:
     """Markup and punctuation leave the fragment; the words in them stay."""
-    function_tester(test_case, pyqa._slug)
+    function_tester(test, pyqa._slug)
 
 
 def test_a_link_outside_a_fence_that_needs_a_longer_marker_to_close_is_still_checked(
@@ -1604,9 +1604,9 @@ def test_a_links_run_finds_no_module(tmp_path: pathlib.Path, monkeypatch: pytest
     assert suffixes == [".md"]
 
 
-@pytest.mark.parametrize_test_case("test_case", TEST_CASES["malformed"])
+@pytest.mark.parametrize_tests(TESTS["malformed"])
 def test_a_malformed_config_fails_the_run_naming_its_file(
-    test_case: dict,
+    test: dict,
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
     function_tester: Callable,
@@ -1623,12 +1623,12 @@ def test_a_malformed_config_fails_the_run_naming_its_file(
         monkeypatch.chdir(tmp_path)
         return pyqa.main(["."])
 
-    function_tester(test_case, read)
+    function_tester(test, read)
 
 
-@pytest.mark.parametrize_test_case("test_case", TEST_CASES["marker_pass"])
+@pytest.mark.parametrize_tests(TESTS["marker_pass"])
 def test_a_marker_is_judged_for_the_groups_that_ran(
-    test_case: dict,
+    test: dict,
     pyqa_report: Callable,
     function_tester: Callable,
 ) -> None:
@@ -1637,7 +1637,7 @@ def test_a_marker_is_judged_for_the_groups_that_ran(
     Mutation: judge every pyqa family in `_is_stale`, whatever ran. `make docstrings` fails on a `disable=DBG002` it
     had no way to weigh.
     """
-    function_tester(test_case, pyqa_report)
+    function_tester(test, pyqa_report)
 
 
 def test_a_missing_root_fails_the_run_naming_it(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1725,9 +1725,9 @@ def test_a_path_pattern_never_covers_a_file_outside_the_config_folder() -> None:
     assert not pyqa._covers("src/shared", ("src", "shared"), None)
 
 
-@pytest.mark.parametrize_test_case("test_case", TEST_CASES["tools"])
+@pytest.mark.parametrize_tests(TESTS["tools"])
 def test_a_private_tool_docstring_keeps_the_sections_a_model_reads(
-    test_case: dict,
+    test: dict,
     tmp_path: pathlib.Path,
     capsys: pytest.CaptureFixture,
     function_tester: Callable,
@@ -1745,7 +1745,7 @@ def test_a_private_tool_docstring_keeps_the_sections_a_model_reads(
         printed = capsys.readouterr().out.splitlines()
         return tuple(sorted({one.split()[1] for one in printed if ":1: " in one}))
 
-    function_tester(test_case, reported)
+    function_tester(test, reported)
 
 
 def test_a_raise_inside_a_nested_function_asks_nothing_of_the_outer_docstring(
@@ -1764,9 +1764,9 @@ def test_a_raise_inside_a_nested_function_asks_nothing_of_the_outer_docstring(
     assert ":1: DSC" not in capsys.readouterr().out
 
 
-@pytest.mark.parametrize_test_case("test_case", TEST_CASES["faithful"])
+@pytest.mark.parametrize_tests(TESTS["faithful"])
 def test_a_rewrite_is_trusted_only_holding_every_line_and_still_parsing(
-    test_case: dict,
+    test: dict,
     function_tester: Callable,
 ) -> None:
     """A sort is written back only when it moved lines rather than losing or breaking any.
@@ -1774,12 +1774,12 @@ def test_a_rewrite_is_trusted_only_holding_every_line_and_still_parsing(
     Mutation: drop the parse from `_is_faithful`. A sort that keeps every line but lifts one out of its block is
     written to disk as a module that no longer imports.
     """
-    function_tester(test_case, pyqa._is_faithful)
+    function_tester(test, pyqa._is_faithful)
 
 
-@pytest.mark.parametrize_test_case("test_case", TEST_CASES["layout"])
+@pytest.mark.parametrize_tests(TESTS["layout"])
 def test_a_run_prints_its_findings_then_its_summary_then_its_rules(
-    test_case: dict,
+    test: dict,
     tmp_path: pathlib.Path,
     capsys: pytest.CaptureFixture,
     monkeypatch: pytest.MonkeyPatch,
@@ -1801,7 +1801,7 @@ def test_a_run_prints_its_findings_then_its_summary_then_its_rules(
         status = pyqa.main([*flags, "."])
         return status, tuple(capsys.readouterr().out.splitlines())
 
-    function_tester(test_case, printed)
+    function_tester(test, printed)
 
 
 def test_a_section_spelled_as_the_guide_spells_it_is_not_reported(
@@ -1820,8 +1820,8 @@ def test_a_section_spelled_as_the_guide_spells_it_is_not_reported(
     assert ":1: DSC" not in capsys.readouterr().out
 
 
-@pytest.mark.parametrize_test_case("test_case", TEST_CASES["defined"])
-def test_a_statement_binds_the_names_its_own_scope_holds(test_case: dict, function_tester: Callable) -> None:
+@pytest.mark.parametrize_tests(TESTS["defined"])
+def test_a_statement_binds_the_names_its_own_scope_holds(test: dict, function_tester: Callable) -> None:
     """A statement binds its targets, imports and definition names, and none a nested scope binds for itself.
 
     Mutation: descend into a comprehension in `_defined_names`. Its loop variable reads as bound in the body, so a
@@ -1832,13 +1832,13 @@ def test_a_statement_binds_the_names_its_own_scope_holds(test_case: dict, functi
         """The names the first statement of one module's source binds."""
         return pyqa._defined_names(ast.parse(source).body[0])
 
-    function_tester(test_case, defined)
+    function_tester(test, defined)
 
 
-@pytest.mark.parametrize_test_case("test_case", TEST_CASES["sentences"])
-def test_a_summary_line_splits_into_the_sentences_it_holds(test_case: dict, function_tester: Callable) -> None:
+@pytest.mark.parametrize_tests(TESTS["sentences"])
+def test_a_summary_line_splits_into_the_sentences_it_holds(test: dict, function_tester: Callable) -> None:
     """A period that ends a sentence breaks the line, and every other period does not."""
-    function_tester(test_case, pyqa._sentences)
+    function_tester(test, pyqa._sentences)
 
 
 def test_a_two_sentence_summary_is_reported_as_dsc003(tmp_path: pathlib.Path, capsys: pytest.CaptureFixture) -> None:
@@ -1855,9 +1855,9 @@ def test_a_two_sentence_summary_is_reported_as_dsc003(tmp_path: pathlib.Path, ca
     ]
 
 
-@pytest.mark.parametrize_test_case("test_case", TEST_CASES["not_a_link"])
+@pytest.mark.parametrize_tests(TESTS["not_a_link"])
 def test_an_example_or_a_route_is_not_followed_as_a_link(
-    test_case: dict,
+    test: dict,
     tmp_path: pathlib.Path,
     function_tester: Callable,
 ) -> None:
@@ -1869,12 +1869,12 @@ def test_an_example_or_a_route_is_not_followed_as_a_link(
         path.write_text(body, encoding="utf-8")
         return pyqa._unresolved([path], tmp_path)
 
-    function_tester(test_case, unresolved)
+    function_tester(test, unresolved)
 
 
-@pytest.mark.parametrize_test_case("test_case", TEST_CASES["exclude"])
+@pytest.mark.parametrize_tests(TESTS["exclude"])
 def test_an_exclude_pattern_covers_what_it_names(
-    test_case: dict,
+    test: dict,
     tmp_path: pathlib.Path,
     capsys: pytest.CaptureFixture,
     monkeypatch: pytest.MonkeyPatch,
@@ -1898,7 +1898,7 @@ def test_an_exclude_pattern_covers_what_it_names(
         found = {(tmp_path / where / one.split(":")[0]).resolve() for one in printed if ":1: " in one}
         return tuple(sorted(str(one.relative_to(tmp_path.resolve())) for one in found))
 
-    function_tester(test_case, reported)
+    function_tester(test, reported)
 
 
 def test_an_excluded_document_is_not_followed(
@@ -1937,9 +1937,9 @@ def test_an_interrupted_run_exits_the_way_a_shell_reports_one(monkeypatch: pytes
     assert refused.value.code == 130
 
 
-@pytest.mark.parametrize_test_case("test_case", TEST_CASES["config"])
+@pytest.mark.parametrize_tests(TESTS["config"])
 def test_an_off_code_is_never_reported_or_failed_on(
-    test_case: dict,
+    test: dict,
     tmp_path: pathlib.Path,
     capsys: pytest.CaptureFixture,
     monkeypatch: pytest.MonkeyPatch,
@@ -1962,12 +1962,12 @@ def test_an_off_code_is_never_reported_or_failed_on(
         codes = tuple(sorted({one.split()[1] for one in capsys.readouterr().out.splitlines() if ":1: " in one}))
         return status, codes, tuple(sorted(pyqa._config().off))
 
-    function_tester(test_case, reported)
+    function_tester(test, reported)
 
 
-@pytest.mark.parametrize_test_case("test_case", TEST_CASES["order"])
+@pytest.mark.parametrize_tests(TESTS["order"])
 def test_every_body_sorts_to_where_a_reader_looks_for_each_name(
-    test_case: dict,
+    test: dict,
     monkeypatch: pytest.MonkeyPatch,
     function_tester: Callable,
 ) -> None:
@@ -1981,7 +1981,7 @@ def test_every_body_sorts_to_where_a_reader_looks_for_each_name(
         """Sort one module's source the way `--fix` does, with the default pins."""
         return pyqa._rewrite(source, frozenset(pyqa.DEFAULT_PINNED))
 
-    function_tester(test_case, rewrite, monkeypatch=monkeypatch)
+    function_tester(test, rewrite, monkeypatch=monkeypatch)
 
 
 def test_every_code_carries_one_name_of_its_own() -> None:
@@ -1995,15 +1995,15 @@ def test_every_code_carries_one_name_of_its_own() -> None:
     assert all(re.fullmatch(r"[a-z]+(?:-[a-z]+)+", one) for one in pyqa.NAMES.values())
 
 
-@pytest.mark.parametrize_test_case("test_case", TEST_CASES["docstrings"])
-def test_every_shape_holding_a_docstring_reports_its_summary(test_case: dict, function_tester: Callable) -> None:
+@pytest.mark.parametrize_tests(TESTS["docstrings"])
+def test_every_shape_holding_a_docstring_reports_its_summary(test: dict, function_tester: Callable) -> None:
     """Modules, classes and functions are read; an attribute docstring is not."""
 
     def docstrings(source: str) -> tuple:
         """Read every docstring out of one module's source."""
         return tuple(pyqa._docstrings(ast.parse(source)))
 
-    function_tester(test_case, docstrings)
+    function_tester(test, docstrings)
 
 
 def test_fix_is_refused_without_the_order_group(capsys: pytest.CaptureFixture) -> None:
@@ -2065,9 +2065,9 @@ def test_fix_runs_before_any_group_reads_the_files_it_rewrites(
     assert "MRK001" not in capsys.readouterr().out
 
 
-@pytest.mark.parametrize_test_case("test_case", TEST_CASES["fix_off"])
+@pytest.mark.parametrize_tests(TESTS["fix_off"])
 def test_fix_sorts_nothing_while_both_order_codes_are_off(
-    test_case: dict,
+    test: dict,
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
     function_tester: Callable,
@@ -2088,7 +2088,7 @@ def test_fix_sorts_nothing_while_both_order_codes_are_off(
         status = pyqa.main(["--order", "--fix", "."])
         return status, path.read_text() != GROUP_MODULE
 
-    function_tester(test_case, fixed)
+    function_tester(test, fixed)
 
 
 def test_fix_sorts_the_module_it_would_have_reported(tmp_path: pathlib.Path, capsys: pytest.CaptureFixture) -> None:
@@ -2107,9 +2107,9 @@ def test_fix_sorts_the_module_it_would_have_reported(tmp_path: pathlib.Path, cap
     assert pyqa.main(["--order", str(tmp_path)]) == 0
 
 
-@pytest.mark.parametrize_test_case("test_case", TEST_CASES["summary"])
+@pytest.mark.parametrize_tests(TESTS["summary"])
 def test_one_line_sums_up_what_a_run_read_and_found(
-    test_case: dict,
+    test: dict,
     tmp_path: pathlib.Path,
     capsys: pytest.CaptureFixture,
     monkeypatch: pytest.MonkeyPatch,
@@ -2131,7 +2131,7 @@ def test_one_line_sums_up_what_a_run_read_and_found(
         pyqa.main([*flags, "."])
         return next(one for one in capsys.readouterr().out.splitlines() if one.startswith("scanned "))
 
-    function_tester(test_case, summary)
+    function_tester(test, summary)
 
 
 def test_the_report_names_every_code_it_prints(tmp_path: pathlib.Path, capsys: pytest.CaptureFixture) -> None:

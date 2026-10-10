@@ -25,12 +25,12 @@ define PY_MAKE_PULL
 tmp_dir="$$(mktemp -d)" && trap 'rm -rf "$$tmp_dir"' EXIT && \
 	git clone --quiet --depth 1 --no-checkout --single-branch --branch $(PY_MAKE_REF) $(PY_MAKE_REPO) "$$tmp_dir" && \
 	git -C "$$tmp_dir" show HEAD:python.mk > "$$tmp_dir/python.mk" && \
-	git -C "$$tmp_dir" show HEAD:tools/build_python_release.sh > "$$tmp_dir/build_python_release.sh" && \
 	git -C "$$tmp_dir" show HEAD:tools/pyqa.py > "$$tmp_dir/pyqa.py" && \
+	git -C "$$tmp_dir" show HEAD:tools/build_python_release.sh > "$$tmp_dir/build_python_release.sh" && \
 	mkdir -p tools && \
 	install -m 444 "$$tmp_dir/python.mk" python.mk && \
-	install -m 555 "$$tmp_dir/build_python_release.sh" tools/build_python_release.sh && \
-	install -m 555 "$$tmp_dir/pyqa.py" tools/pyqa.py
+	install -m 555 "$$tmp_dir/pyqa.py" tools/pyqa.py && \
+	install -m 555 "$$tmp_dir/build_python_release.sh" tools/build_python_release.sh
 endef
 
 # Keep the shared python recipes current: make remakes an included makefile before reading it, and restarts on a pull.

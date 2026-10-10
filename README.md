@@ -31,10 +31,10 @@ Either way, the tools will typically not be used directly from a full clone of t
 
 ### Install Python Project Starter Makefile
 
-1. Copy the [python-starter.mk](./python-starter.mk) template to `Makefile` in a new project.
+1. Copy the [python-starter-Makefile.mk](python-starter-Makefile) template to `Makefile` in a new project.
 1. Update the placeholders at the top of the file.
-    - `UPSTREAM` is required, and must be the project's upstream git repository path.
-    - `PYLINT_EXTRAS` is optional, and can be used to add additional file(s)/folder(s) to the lint jobs.
+    - `UPSTREAM` is required and must be the project's upstream git repository path.
+    - `PYLINT_EXTRAS` is optional and can be used to add additional file(s)/folder(s) to the lint jobs.
 1. Run `make setup` to set up the project and clone the Python common recipes for future use.
 1. Optional: Follow [Use Python Common Recipes](#use-python-common-recipes) as needed.
 
@@ -43,6 +43,7 @@ Either way, the tools will typically not be used directly from a full clone of t
 The process is performed automatically by the Python project starter Makefile. To use the file manually:
 
 1. Copy the [python.mk](./python.mk) to `python.mk` in an existing project.
+1. Copy the [tools/pyqa.py](./tools/pyqa.py) to `tools/pyqa.py` in an existing project.
 1. Add `-include python.mk` to the top of the primary `Makefile` in the project.
 1. Follow [Use Python Common Recipes](#use-python-common-recipes) as needed.
 
@@ -53,22 +54,22 @@ The process is performed automatically by the Python project starter Makefile. T
 The Python common Makefile contains the following recipes:
 
 - `venv` - Create a Python virtual environment for development/testing.
-- `clean-venv` - Remove the Python virtual environment.
-- `format` - Check source code format for consistent patterns.
-- `format-fix` - Rewrite source code into the format `format` checks for.
-- `debugging` - Check source code for debugging calls left in, and exemptions that exempt nothing.
-- `docstrings` - Check source code docstrings for consistent declarations.
-- `order` - Check source code for consistent content order.
-- `order-fix` - Sort source code into the order `order` checks for.
-- `lint` - Check for common lint/complexity/style issues.
-- `typing` - Check typehints for static typing best practices.
-- `security` - Check for common security issues/best practices.
 - `qa` - Check full code quality suite (minus unit tests) against source.
 - `test` - Run basic unit tests.
 - `audit` - Run lightweight package audit for vulnerabilities.
-- `wheel` - Package the library into a pip installable.
-- `release` - Package the library into a pip installable.
 - `clean` - Remove the packages from previous builds.
+- `clean-venv` - Remove the Python virtual environment.
+- `debugging` - Check source code for debugging calls left in, and exemptions that exempt nothing.
+- `docstrings` - Check source code docstrings for consistent declarations.
+- `format` - Check source code format for consistent patterns.
+- `format-fix` - Rewrite source code into the format `format` checks for.
+- `lint` - Check for common lint/complexity/style issues.
+- `order` - Check source code for consistent content order.
+- `order-fix` - Sort source code into the order `order` checks for.
+- `release` - Package the library into a pip installable.
+- `security` - Check for common security issues/best practices.
+- `typing` - Check typehints for static typing best practices.
+- `wheel` - Package the library into a pip installable.
 
 ### Use Python Release Builder
 

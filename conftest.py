@@ -1,7 +1,7 @@
 """The declared-test-case machinery, and the plugins that carry everything else.
 
 `function_tester` runs one declared case against a callable and `pytest_generate_tests` expands the
-`parametrize_test_case` marker into pytest IDs. Every other fixture this suite shares lives in the plugins
+`parametrize_tests` marker into pytest IDs. Every other fixture this suite shares lives in the plugins
 named below.
 """
 
@@ -157,29 +157,31 @@ def _patch_test(target: Any, name: str, value: Any, monkeypatch: pytest.MonkeyPa
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    """Add the `parametrize_test_case` marker to the pytest configuration.
+    """Add the `parametrize_tests` marker to the pytest configuration.
 
     Args:
         config: The pytest configuration.
     """
     config.addinivalue_line(
         "markers",
-        "parametrize_test_case: Mark test as parametrized with a test case mapping that supplies the pytest IDs.",
+        "parametrize_tests: Mark a test function as parametrized with a mapping of entries that supplies the args and IDs.",
     )
 
 
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
-    """Expand the `parametrize_test_case` marker, taking pytest ids from the test case names.
+    """Expand the `parametrize_tests` marker, taking pytest ids from the test case names.
 
     Args:
         metafunc: The test being collected.
     """
-    mark = metafunc.definition.get_closest_marker("parametrize_test_case")
+    mark = metafunc.definition.get_closest_marker("parametrize_tests")
     if not mark:
         return
     args = list(mark.args)
-    test_cases = args[1]
-    args[1] = list(test_cases.values()) if isinstance(test_cases, dict) else list(test_cases)
+    if len(args) == 1:
+        args = ["test"] + args
+    tests = args[1]
+    args[1] = list(tests.values()) if isinstance(tests, dict) else list(tests)
     kwargs = dict(mark.kwargs)
-    kwargs["ids"] = [str(name) for name in (test_cases.keys() if isinstance(test_cases, dict) else test_cases)]
+    kwargs["ids"] = [str(name) for name in (tests.keys() if isinstance(tests, dict) else tests)]
     metafunc.parametrize(*args, **kwargs)
