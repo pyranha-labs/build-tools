@@ -25,7 +25,7 @@ class Target:
         return value
 
 
-TEST_CASES = {
+TESTS = {
     "patches": {
         "a class method patch receives the class, through the class and an instance alike": {
             "args": ["cm", 2],
@@ -55,9 +55,9 @@ def call(name: str, value: int) -> tuple:
     return tuple(results)
 
 
-@pytest.mark.parametrize_test_case("test_case", TEST_CASES["patches"])
+@pytest.mark.parametrize_tests(TESTS["patches"])
 def test_a_patch_takes_the_shape_of_the_method_it_replaces(
-    test_case: dict,
+    test: dict,
     monkeypatch: pytest.MonkeyPatch,
     function_tester: Callable,
 ) -> None:
@@ -66,4 +66,4 @@ def test_a_patch_takes_the_shape_of_the_method_it_replaces(
     Mutation: read the patched attribute with `getattr` alone in `_patch_test`. A class method reads as already bound
     rather than as a function, so its patch goes in unwrapped and the class is never passed.
     """
-    function_tester(test_case, call, monkeypatch=monkeypatch)
+    function_tester(test, call, monkeypatch=monkeypatch)
