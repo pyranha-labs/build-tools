@@ -5,8 +5,9 @@ Cross-project setup and build tools that guarantee code/process consistency and 
 ## Table Of Contents
 
 * [How Tos](#how-tos)
+    * [Bootstrap New Python Project](#bootstrap-new-python-project)
     * [Install Python Project Starter Makefile](#install-python-project-starter-makefile)
-    * [Install Python Common Makefile](#install-python-common-makefile)
+    * [Manually Install Python Common Makefile](#manually-install-python-common-makefile)
     * [Use Python Common Recipes](#use-python-common-recipes)
     * [Use Python Release Builder](#use-python-release-builder)
     * [Contribute](#contribute)
@@ -29,6 +30,11 @@ Either way, the tools will typically not be used directly from a full clone of t
 > Recipes rely on `uv` for easy python and virtual environment management, and more.
 > For installation steps refer to: [Astral - uv](https://docs.astral.sh/uv/getting-started/installation/)
 
+### Bootstrap New Python Project
+
+1. Copy [python-starter-.gitignore](python-starter-.gitignore) to `.gitignore` in the new project.
+1. Follow [Install Python Project Starter Makefile](#install-python-project-starter-makefile)
+
 ### Install Python Project Starter Makefile
 
 1. Copy the [python-starter-Makefile.mk](python-starter-Makefile) template to `Makefile` in a new project.
@@ -38,7 +44,7 @@ Either way, the tools will typically not be used directly from a full clone of t
 1. Run `make setup` to set up the project and clone the Python common recipes for future use.
 1. Optional: Follow [Use Python Common Recipes](#use-python-common-recipes) as needed.
 
-### Install Python Common Makefile
+### Manually Install Python Common Makefile
 
 The process is performed automatically by the Python project starter Makefile. To use the file manually:
 
