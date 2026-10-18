@@ -40,7 +40,6 @@ Either way, the tools will typically not be used directly from a full clone of t
 1. Copy the [python-starter-Makefile.mk](python-starter-Makefile) template to `Makefile` in a new project.
 1. Update the placeholders at the top of the file.
     - `UPSTREAM` is required and must be the project's upstream git repository path.
-    - `PYLINT_EXTRAS` is optional and can be used to add additional file(s)/folder(s) to the lint jobs.
 1. Run `make setup` to set up the project and clone the Python common recipes for future use.
 1. Optional: Follow [Use Python Common Recipes](#use-python-common-recipes) as needed.
 
@@ -55,7 +54,16 @@ The process is performed automatically by the Python project starter Makefile. T
 
 ### Use Python Common Recipes
 
-1. Run `make <recipe>` to perform a specific Python-based process. Example: `make test`.
+> Recipes read the paths they check from `pyproject.toml` rather than from make variables, wherever the tool allows.
+> - The `lint` and `typing` recipes run `pylint` and `mypy` on `PY_SRC_ROOT`, the `src/` package by default. Set it
+>   empty in the project's `Makefile` to read their `files` from `pyproject.toml` instead.
+> - The `security` recipe uses `bandit`, which reads no target from `pyproject.toml`, so `PY_SECURITY_ROOT` names it.
+
+1. Run `make <recipe>` to perform a specific Python-based process. Example: `make test`
+1. Optional: Add `<NAME>_EXTRAS` to pass extra arguments to the command `CMD_<NAME>` in `python.mk` runs, on the
+   command line or in the project's `Makefile`. Example: `make typing TYPING_EXTRAS=--strict`
+1. Optional: Add `since=<count or git ref>` to check only files changed since then. Example: `make qa since=origin/HEAD`
+1. Optional: Add `dry=true` to print each recipe's commands instead of running them. Example: `make qa dry=true`
 
 The Python common Makefile contains the following recipes:
 
@@ -70,6 +78,7 @@ The Python common Makefile contains the following recipes:
 - `format` - Check source code format for consistent patterns.
 - `format-fix` - Rewrite source code into the format `format` checks for.
 - `lint` - Check for common lint/complexity/style issues.
+- `lint-fix` - Rewrite source code into the format `lint` checks for.
 - `order` - Check source code for consistent content order.
 - `order-fix` - Sort source code into the order `order` checks for.
 - `release` - Package the library into a pip installable.

@@ -64,11 +64,9 @@ cython_debug/
 !.claude/
 .claude/*
 !.claude/skills/
+CLAUDE.local.md
 
 # Local development helpers
 activate
 uv.lock
-# Uncomment these for child projects.
-#python.mk
-#build_python_release.sh
-#pyqa.py
+python_overrides.mk
