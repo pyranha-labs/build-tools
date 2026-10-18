@@ -18,9 +18,6 @@ dev = [
 ]
 
 [tool.bandit]
-targets = [
-    "tools"
-]
 exclude_dirs = [
     # Sibling worktrees live in ".claude/worktrees", each a full checkout, so a scan of the project root walks
     # into every one and fails the gate on another branch's code. Every entry is matched as a substring of the
@@ -29,7 +26,6 @@ exclude_dirs = [
     ".claude",
     ".venv",
     "/test/",
-    "conftest.py",
 ]
 
 [tool.coverage.report]
@@ -40,7 +36,6 @@ branch = true
 omit = [
     # Test folders contain test code that do not need to be reported on. They are the report.
     "*/test/*",
-    "conftest.py",
 ]
 
 [tool.pylint]
@@ -86,16 +81,7 @@ fail-on = [
 [tool.pylint.MASTER]
 # Use jobs 0 to autodetect CPUs on system for parallel performance.
 jobs = 0
-ignore = [
-    "^\\..*",
-    "__pycache__",
-    "build",
-    "conftest.py",
-    "dist",
-    # Skip test files from lint to avoid littering with unnecessary ignores.
-    # Test files are known to perform logic that is often non-standard in order to test all scenarios.
-    "test",
-]
+files = ["tools", "conftest.py"]
 
 [tool.pylint.DESIGN]
 # Decreased limits.
@@ -114,7 +100,7 @@ filterwarnings = [
     "error",
 ]
 markers = [
-    "parametrize_test_case: Mark test as parametrized with a test case mapping that supplies the pytest IDs.",
+    "parametrize_tests: Mark a test function as parametrized with a mapping of entries that supplies the args and IDs.",
 ]
 
 [tool.mypy]
@@ -122,6 +108,7 @@ markers = [
 # here rather than a failure on the oldest interpreter a project supports. mypy does not read `requires-python` itself.
 python_version = "3.12"
 exclude = "(__pycache__|build|dist)/"
+files = ["conftest.py", "tools"]
 ignore_missing_imports = true
 warn_unused_configs = true
 # The `type: ignore` counterpart to pylint's useless-suppression: an ignore that suppresses nothing reads as
@@ -237,3 +224,9 @@ force-single-line = true
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
+
+[tool.pyqa]
+include = [
+    "./tools",
+    "./conftest.py",
+]

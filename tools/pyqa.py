@@ -15,6 +15,11 @@ each code, and a run prints it under every code it reported.
 `DSC002` passes over a test module, and `DSC003` reads every module, class and function docstring but no attribute
 docstring. A header `DSC004` reads as misspelled counts as the section it means, so `DSC002` does not report it missing.
 
+`--suppressions` holds every `# nosec` comment to `[tool.pyqa] nosec_patterns` to elevate requirements to use security
+ignores. The regular expressions check for a matching justification after the `#` closing its test IDs, such as
+`'ISSUE-[0-9]+'` for a ticket that approved it. Bandit reads text before a second `#` as test IDs, so a justification
+written there is invalid.
+
 Every code has a name saying what it reports, such as `debug-print` for `DBG001` or `order-alpha` for `ORD001`. A
 report prints it after the code, as pylint prints its own, and a marker, `[tool.pyqa] select` or `ignore` takes either.
 
@@ -26,9 +31,16 @@ and the list ends at the first text that is not one more entry, so comments or a
 working directory. Each lists selectors: a code, its name, or a prefix of codes such as `DSC`. A code is on when the
 most specific selector matching it comes from `select`, a code or a name being more specific than any prefix and a
 longer prefix more than a shorter one, and `ignore` winning a tie; without `select`, every code starts selected.
-`exclude` lists paths and globs kept out of every group and out of `--fix`, beside the hidden and `UNOWNED` trees that
-are always kept out. A pattern with no `/` matches a file or directory name at any depth, and one with a `/` a path
-from the `pyproject.toml`'s folder, a leading `./` or a trailing `/` dropped.
+`include` and `exclude` list paths and globs. A run naming no path reads the working directory, its modules kept to
+what `include` covers when it is set. `exclude` keeps what it covers out of every group and out of `--fix`, beside the
+hidden and `UNOWNED` trees that are always kept out. A pattern with no `/` matches a file or directory name at any
+depth, and one with a `/` a path from the `pyproject.toml`'s folder, a leading `./` or a trailing `/` dropped.
+
+`--since` keeps a run to the modules the commits since a starting point added, copied, modified or renamed: a count
+back from `HEAD`, or a git reference compared from where `HEAD` split from it. It narrows what the run would read
+anyway, so `include`, `exclude` and named paths keep their meaning, and documents are read in full, since a link joins
+two of them. `--list` prints the modules the commits since `--since` changed, one per line, rather than checking them,
+and passes over every `[tool.pyqa]` path, so another tool handed them applies its own exclusions instead.
 """
 
 # The tool ships as the one file, so it grows past the module limit rather than splitting into a package.
@@ -46,6 +58,7 @@ import io
 import itertools
 import pathlib
 import re
+import subprocess  # nosec B404  # Runs git alone, to read which files a range of commits changed.
 import tokenize
 import tomllib
 from collections.abc import Callable
@@ -66,7 +79,7 @@ BUILTIN_NAMES = frozenset(dir(builtins))
 CODE_SPAN = re.compile(r"`[^`]*`")
 
 # The keys `[tool.pyqa]` takes. Any other is refused, so a misspelled key cannot pass for one that does something.
-CONFIG_KEYS = frozenset({"exclude", "ignore", "select"})
+CONFIG_KEYS = frozenset({"exclude", "ignore", "include", "nosec_patterns", "select"})
 
 # The callees the debugging group reports, each with its code, spelled the way `ast.unparse` spells a call's function,
 # so a method sharing a name such as `self.print` is not one. A print is output left in; the others stop a debugger.
@@ -130,12 +143,16 @@ NAMES = {
     "MRK001": "marker-unused",
     "ORD001": "order-alpha",
     "ORD002": "order-assignment",
+    "SUP001": "suppression-unjustified",
 }
 
 # How close a header has to be to a section's name to read as that name misspelled. A case, a singular, or one
 # letter dropped or transposed clears it; `Arguments:` and `Parameters:`, which are other conventions' names for
 # `Args:` rather than misspellings of it, do not.
 NEARNESS = 0.8
+
+# A `nosec` comment as bandit finds one with the justification after the `#` that closes its test IDs.
+NOSEC = re.compile(r"#\s*nosec:?[^#]*(?:#(?P<reason>.*))?")
 
 PROPERTY_DECORATORS = frozenset({"cached_property", "functools.cached_property", "property"})
 RELATIVE = re.compile(r"\]\(([^)\s]+)\)")
@@ -158,9 +175,10 @@ RULES = {
     "DSC004": "A section header is spelled the way the guide spells it: `Args`, `Returns`, `Yields`, `Raises`. A header near one of those reads as that section misspelled; another convention's name for it does not.",
     "LNK001": "A relative link resolves to a file this repository holds, read from the folder the linking document sits in. A URL, a `mailto:` address and a leading-slash route on the running service are none of this tool's to resolve.",
     "LNK002": "A link's `#fragment` names a heading the target document holds, slugged the way GitHub slugs one: lowered, spaces hyphenated, the rest of the punctuation dropped, and a repeat numbered from the second. A fragment with no path resolves against the document it is written in.",
-    "MRK001": "A `# pyqa:` marker entry names a rule only where it exempts something. An entry naming no rule, one repeating a rule its scope already names, a line entry whose rule a file entry in its module names, and a rule no comment can exempt (`LNK`, `MRK`) are stale: cut them.",
+    "MRK001": "A `# pyqa:` marker entry names a rule only where it exempts something. An entry naming no rule, one repeating a rule its scope already names, a line entry whose rule a file entry in its module names, and a rule no comment can exempt (`LNK`, `MRK`, `SUP`) are stale: cut them.",
     "ORD001": "A definition sits where a reader looking for it by name would look: alphabetical among its siblings, classes above functions, and `__init__` then the dunders first among a class's definitions. What a statement reads at definition time still comes first, and a later rebinding of it stays below the read.",
     "ORD002": "An assignment, in a module or a class body, is ranked above the definitions sharing its body and keeps the order someone chose among the assignments, so the ones that move are below a definition, or below a statement that reads them with nothing above it binding the name; one rebinding a name a statement above it reads stays below that statement.",
+    "SUP001": "A `# nosec` comment states, after the `#` closing its test IDs, a justification one of `[tool.pyqa] nosec_patterns` matches, such as the ticket that approved it. Bandit reads the text before that `#` as test IDs, so a justification written there is none.",
 }
 
 # The expressions that open a scope of their own, so a name bound inside one is not bound in the body around it.
@@ -185,9 +203,9 @@ TEST_NAMES = frozenset({"conftest.py", "test"})
 # A link target this repository does not own. A leading slash is a route on the running service.
 UNCHECKED = ("http://", "https://", "mailto:", "/")
 
-# The families no comment can exempt: a link sits in a document, which holds no `#` comment, and a stale marker is a
-# finding about a comment itself.
-UNEXEMPTABLE = frozenset({"LNK", "MRK"})
+# The families no comment can exempt: a link sits in a document, which holds no `#` comment, a stale marker is a
+# finding about a comment itself, and a marker beside an unjustified suppression would excuse one comment with another.
+UNEXEMPTABLE = frozenset({"LNK", "MRK", "SUP"})
 
 # Trees holding files this project does not own. Named beside the leading-dot test that keeps a root of `.` out of
 # the virtualenv and every sibling worktree under `.claude`, which the fixer would otherwise rewrite.
@@ -196,11 +214,14 @@ UNOWNED = frozenset({"__pycache__", "build", "dist", "node_modules"})
 
 @dataclasses.dataclass(frozen=True)
 class Config:
-    """What `[tool.pyqa]` asks of a run: the codes it turns off, and the paths it keeps out, read from its folder."""
+    """What `[tool.pyqa]` asks of a run: the codes it turns off, the paths it keeps to and out, and what a nosec states."""
 
-    off: frozenset[str] = frozenset()
+    # `SUP001` holds a justification to the patterns `nosec` lists, so it is off while there are none.
+    off: frozenset[str] = frozenset({"SUP001"})
     exclude: tuple[str, ...] = ()
+    include: tuple[str, ...] = ()
     folder: pathlib.Path = dataclasses.field(default_factory=pathlib.Path.cwd)
+    nosec: tuple[re.Pattern[str], ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -370,6 +391,16 @@ def _chain(items: list[Item], edges: set[tuple[int, int]]) -> set[tuple[int, int
     return chained
 
 
+def _changed(start: str) -> frozenset[pathlib.Path]:
+    """Every file the commits since a starting point added, copied, modified or renamed, resolved for comparing."""
+    top = pathlib.Path(_git("rev-parse", "--show-toplevel").strip())
+    # The three dots compare from where `HEAD` split from the start, so a reference others pushed to counts only this
+    # branch's commits, and naming two commits leaves out what is not committed. The closing `--` keeps git from
+    # reading the start as a path.
+    names = _git("diff", "--name-only", "--diff-filter=ACMR", "-z", f"{start}...HEAD", "--")
+    return frozenset((top / name).resolve() for name in names.split("\0") if name)
+
+
 def _check_exempted(
     scanned: list[pathlib.Path],
     find: Callable[[pathlib.Path, str], list[Finding]],
@@ -437,7 +468,11 @@ def _config() -> Config:
     picked = _weights(_strings(table, "select", path), "select", path) if "select" in table else dict.fromkeys(RULES, 0)
     dropped = _weights(_strings(table, "ignore", path), "ignore", path)
     off = frozenset(code for code in RULES if code not in picked or dropped.get(code, -1) >= picked[code])
-    return Config(off, _patterns(table, path), folder.resolve())
+    nosec = _regexes(table, "nosec_patterns", path)
+    if not nosec:
+        off |= {"SUP001"}
+    exclude, include = _patterns(table, "exclude", path), _patterns(table, "include", path)
+    return Config(off, exclude, include, folder.resolve(), nosec)
 
 
 def _contracted(tree: ast.Module) -> list[ast.AsyncFunctionDef | ast.FunctionDef]:
@@ -460,7 +495,7 @@ def _contracted(tree: ast.Module) -> list[ast.AsyncFunctionDef | ast.FunctionDef
 
 
 def _covers(pattern: str, below: tuple[str, ...], anchor: tuple[str, ...] | None) -> bool:
-    """Whether an `exclude` pattern covers a path below a root, by its last name or by its path from the config."""
+    """Whether an `exclude` or `include` pattern covers a path below a root, by its last name or its config path."""
     if "/" not in pattern:
         return fnmatch.fnmatchcase(below[-1], pattern)
     # Trimmed only once the slash has made it a path, so `./generated` stays at the folder rather than at any depth.
@@ -638,7 +673,7 @@ def _exempting(markers: list[Marker], code: str, line: int) -> int | None:
 
 
 def _files(roots: list[str], suffix: str, config: Config) -> list[pathlib.Path]:
-    """Every file of one suffix under the roots, in a stable order, minus what the project does not own or excludes."""
+    """Every file of one suffix under the roots, in a stable order, kept to what the project includes, minus the rest."""
     found: list[pathlib.Path] = []
     for root in roots:
         path = pathlib.Path(root)
@@ -653,9 +688,13 @@ def _files(roots: list[str], suffix: str, config: Config) -> list[pathlib.Path]:
         # and a root outside that folder takes no anchor, so no pattern holding a `/` matches beneath it.
         base = path.resolve()
         anchor = base.relative_to(config.folder).parts if base.is_relative_to(config.folder) else None
+        # A root inside an included folder is read whole, so a run from within that folder reads what it holds.
+        included = not config.include or (anchor is not None and _is_matched(anchor, (), config.include))
         for one in sorted(path.rglob(f"*{suffix}")):
             below = one.relative_to(path)
-            if not _is_vendored(below) and not _is_excluded(below.parts, anchor, config.exclude):
+            if _is_vendored(below) or _is_matched(below.parts, anchor, config.exclude):
+                continue
+            if included or _is_matched(below.parts, anchor, config.include):
                 found.append(one)
     return found
 
@@ -723,6 +762,19 @@ def _freezes(path: pathlib.Path, source: str, pinned: frozenset[str], markers: l
     return held
 
 
+def _git(*args: str) -> str:
+    """What one git command prints, or the run stopped on what git said went wrong."""
+    done = subprocess.run(
+        ["git", *args],
+        capture_output=True,
+        check=False,
+        text=True,
+    )  # nosec B603, B607  # The arguments are fixed, and git is found as a shell finds it.
+    if done.returncode:
+        raise ValueError(f"git {args[0]} failed: {done.stderr.strip()}")
+    return done.stdout
+
+
 def _glob(pattern: tuple[str, ...], parts: tuple[str, ...]) -> bool:
     """Whether a path's segments match a pattern's, as `fnmatch` reads each, with `**` standing for any run of them."""
     if pattern[:1] == ("**",):
@@ -779,12 +831,6 @@ def _is_dunder(name: str) -> bool:
     return name.startswith("__") and name.endswith("__")
 
 
-def _is_excluded(below: tuple[str, ...], anchor: tuple[str, ...] | None, exclude: tuple[str, ...]) -> bool:
-    """Whether `exclude` covers a file, or a directory between the root it was found under and it."""
-    # Depths start below the root, which is never matched itself: a path named on the command line is always read.
-    return any(_covers(pattern, below[:depth], anchor) for depth in range(1, len(below) + 1) for pattern in exclude)
-
-
 def _is_faithful(source: str, rewritten: str) -> bool:
     """Whether the rewrite holds exactly the lines the original held, and is still a Python module."""
     try:
@@ -794,6 +840,12 @@ def _is_faithful(source: str, rewritten: str) -> bool:
     return sorted(one for one in source.splitlines() if one.strip()) == sorted(
         one for one in rewritten.splitlines() if one.strip()
     )
+
+
+def _is_matched(below: tuple[str, ...], anchor: tuple[str, ...] | None, patterns: tuple[str, ...]) -> bool:
+    """Whether a pattern covers a file, or a directory between the root it was found under and it."""
+    # Depths start below the root, which is never matched itself: a path named on the command line is always read.
+    return any(_covers(pattern, below[:depth], anchor) for depth in range(1, len(below) + 1) for pattern in patterns)
 
 
 def _is_movable(node: ast.stmt) -> bool:
@@ -837,6 +889,15 @@ def _is_tool(node: ast.AsyncFunctionDef | ast.FunctionDef) -> bool:
 def _is_vendored(path: pathlib.Path) -> bool:
     """Whether the path sits in a tree this project does not own and must not read or rewrite."""
     return any(part.startswith(".") or part in UNOWNED for part in path.parts)
+
+
+def _list_changed(start: str) -> None:
+    """Print each module the commits since a start changed, relative to the working directory the tool reading it runs in."""
+    here = pathlib.Path.cwd().resolve()
+    for path in sorted(one for one in _changed(start) if one.suffix == ".py"):
+        relative = path.relative_to(here, walk_up=True)
+        # Bandit matches `exclude_dirs` as substrings, so an entry such as `/test/` only meets a top folder as `./test/`.
+        _print(relative if relative.parts[0] == ".." else f"./{relative}")
 
 
 def _markers(source: str) -> list[Marker]:
@@ -893,6 +954,15 @@ def _misspelled_sections(node: ast.AsyncFunctionDef | ast.FunctionDef) -> tuple[
     """The sections this definition's docstring opens under a spelling that is not theirs, in the order written."""
     opened = [_section_of(line) for line in _docstring_lines(node) if line not in SECTIONS]
     return tuple(dict.fromkeys(one for one in opened if one))
+
+
+def _modules(roots: list[str], config: Config, since: str | None) -> list[pathlib.Path]:
+    """Every module a run reads, kept to the ones changed since a start when the run names one."""
+    found = _files(roots, ".py", config)
+    if since:
+        changed = _changed(since)
+        found = [one for one in found if one.resolve() in changed]
+    return found
 
 
 def _named(code: str) -> str:
@@ -1029,13 +1099,13 @@ def _pattern_segments(pattern: str) -> tuple[str, ...]:
     return tuple(pattern.removeprefix("./").rstrip("/").split("/"))
 
 
-def _patterns(table: dict[str, Any], path: pathlib.Path) -> tuple[str, ...]:
-    """The `exclude` patterns, refused when one can never match: one opening at `/` or holding `.`, `..` or nothing."""
-    patterns = tuple(_strings(table, "exclude", path))
+def _patterns(table: dict[str, Any], key: str, path: pathlib.Path) -> tuple[str, ...]:
+    """One key's patterns, refused when one can never match: one opening at `/` or holding `.`, `..` or nothing."""
+    patterns = tuple(_strings(table, key, path))
     impossible = sorted(one for one in patterns if one.startswith("/") or {"", ".", ".."} & set(_pattern_segments(one)))
     if impossible:
         listed = ", ".join(impossible)
-        raise ValueError(f"`[tool.pyqa] exclude` in {path} holds a pattern that can never match: {listed}")
+        raise ValueError(f"`[tool.pyqa] {key}` in {path} holds a pattern that can never match: {listed}")
     return patterns
 
 
@@ -1104,12 +1174,28 @@ def _referenced_names(node: ast.stmt, deferred: bool) -> frozenset[str]:
     return frozenset(names)
 
 
+def _regexes(table: dict[str, Any], key: str, path: pathlib.Path) -> tuple[re.Pattern[str], ...]:
+    """One key's regular expressions, refused when one does not compile or already matches an empty justification."""
+    compiled: list[re.Pattern[str]] = []
+    for one in _strings(table, key, path):
+        try:
+            compiled.append(re.compile(one))
+        except re.error as error:
+            raise ValueError(
+                f"`[tool.pyqa] {key}` in {path} holds a pattern that does not compile: {one} ({error})"
+            ) from error
+    # Refused for the reason a selector naming nothing is: a pattern every comment meets reads as load-bearing.
+    if empty := sorted(one.pattern for one in compiled if one.search("")):
+        raise ValueError(
+            f"`[tool.pyqa] {key}` in {path} holds a pattern an empty justification matches: {', '.join(empty)}"
+        )
+    return tuple(compiled)
+
+
 def _report(results: dict[str, tuple[list[Finding], int]], off: frozenset[str], scanned: str, fixed: str | None) -> int:
-    """Print every finding, then one line saying what the run read and found, and answer whether anything fails it."""
+    """Print one line saying what the run read and found, then every finding, and answer whether anything fails it."""
     found = [one for findings, _ in results.values() for one in findings]
     kept = [one for one in found if one.code not in off]
-    for finding in kept:
-        _print(finding)
     counts: list[str] = []
     if results:
         checked = [code for code in RULES if code[:3] in results and code not in off]
@@ -1122,10 +1208,10 @@ def _report(results: dict[str, tuple[list[Finding], int]], off: frozenset[str], 
         counts.append(fixed)
     summary = f"{scanned}: {', '.join(counts)}"
     # Always say how much was read. A silent pass and a pass over nothing at all read the same.
-    _print(f"\n{summary}" if kept else summary)
+    _print(f"{summary}\n" if kept else summary)
+    for finding in kept:
+        _print(finding)
     counted = collections.Counter(one.code for one in kept)
-    if counted:
-        _print(f"\nreported {', '.join(f'{count} {_named(code)}' for code, count in sorted(counted.items()))}")
     for code in sorted(counted):
         _print(f"\n{_named(code)}  {RULES[code]}")
     return 1 if counted else 0
@@ -1143,9 +1229,12 @@ def _rewrite(source: str, pinned: frozenset[str]) -> str:
     return current if _is_faithful(source, current) else source
 
 
-def _scanned(read: dict[str, list[pathlib.Path]], roots: list[str]) -> str:
+def _scanned(read: dict[str, list[pathlib.Path]], roots: list[str], since: str | None) -> str:
     """How many files of each kind a run read, which is what tells a pass over nothing from a pass."""
-    kinds = " and ".join(_plural(len(paths), kind) for kind, paths in read.items())
+    narrowed = f" changed since {since}" if since else ""
+    kinds = " and ".join(
+        f"{_plural(len(paths), kind)}{narrowed if kind == 'module' else ''}" for kind, paths in read.items()
+    )
     return f"scanned {kinds} under {', '.join(roots)}"
 
 
@@ -1245,6 +1334,14 @@ def _stable_positions(order: list[int]) -> set[int]:
     return keeping
 
 
+def _start(value: str) -> str:
+    """The git revision `--since` names: a count back from `HEAD`, and anything else a reference as written."""
+    # Refused rather than passed on, since git reads a leading hyphen as one of its own options.
+    if value.startswith("-"):
+        raise argparse.ArgumentTypeError(f"takes a commit count or a git reference, not an option: {value}")
+    return f"HEAD~{value}" if value.isascii() and value.isdigit() else value
+
+
 def _stitch(items: list[Item], order: list[int], lines: list[str], in_class: bool) -> str:
     """Rebuild one run in the new order, spaced the way the formatter would leave it."""
     # Two statements that were neighbors keep the gap they had, so a block of related constants moves as a unit.
@@ -1284,6 +1381,26 @@ def _table(path: pathlib.Path) -> dict[str, Any]:
     if not isinstance(table, dict):
         raise ValueError(f"`[tool.pyqa]` in {path} must be a table")
     return table
+
+
+def _unjustified(scanned: list[pathlib.Path], patterns: tuple[re.Pattern[str], ...]) -> list[Finding]:
+    """Every `# nosec` comment whose justification none of the patterns matches, in file order."""
+    # No pattern holds a comment to nothing, rather than holding every comment, so `SUP001` off finds nothing to hide.
+    if not patterns:
+        return []
+    findings: list[Finding] = []
+    for path in scanned:
+        source = path.read_text(encoding="utf-8")
+        if "nosec" not in source:
+            continue
+        findings.extend(
+            Finding("SUP001", path, token.start[0], "`# nosec` justification matches no `nosec_patterns` entry")
+            for token in tokenize.generate_tokens(io.StringIO(source).readline)
+            if token.type == tokenize.COMMENT
+            and (match := NOSEC.search(token.string))
+            and not any(one.search((match["reason"] or "").strip()) for one in patterns)
+        )
+    return findings
 
 
 def _unresolved(paths: list[pathlib.Path], root: pathlib.Path) -> list[Finding]:
@@ -1352,13 +1469,22 @@ def main(argv: list[str] | None = None) -> int:
         0 when every group passes, or `--fix` put the order right, else 1, so a pipeline gates on it.
     """
     parser = argparse.ArgumentParser(allow_abbrev=False, description=__doc__.splitlines()[0])
-    parser.add_argument("roots", nargs="*", help=f"Folders to read. Defaults to {' '.join(DEFAULT_ROOTS)}.")
+    parser.add_argument(
+        "roots",
+        nargs="*",
+        help=f"Files and folders to read, replacing what `[tool.pyqa] include` holds. Defaults to {' '.join(DEFAULT_ROOTS)}.",
+    )
     parser.add_argument(
         "--debugging", action="store_true", help="Check for debugging calls. On when no group is named."
     )
     parser.add_argument("--docs", action="store_true", help="Check docstring shape. On when no group is named.")
     parser.add_argument("--links", action="store_true", help="Check document links. On when no group is named.")
     parser.add_argument("--order", action="store_true", help="Check definition order. On when no group is named.")
+    parser.add_argument(
+        "--suppressions",
+        action="store_true",
+        help="Check `# nosec` justifications against `[tool.pyqa] nosec_patterns`. On when no group is named.",
+    )
     parser.add_argument("--fix", action="store_true", help="Sort what `--order` reports, rather than reporting it.")
     parser.add_argument(
         "--pin",
@@ -1366,14 +1492,35 @@ def main(argv: list[str] | None = None) -> int:
         metavar="NAME",
         help=f"Top-level name `--order` leaves alone. Repeatable, and replaces the default: {' '.join(DEFAULT_PINNED)}.",
     )
+    parser.add_argument(
+        "--list",
+        action="store_true",
+        help="Print the modules the commits since `--since` changed, one per line, rather than checking them. No `[tool.pyqa]` path applies, so another tool handed them applies its own exclusions.",
+    )
+    parser.add_argument(
+        "--since",
+        type=_start,
+        metavar="START",
+        help="Read only the modules the commits since START changed: a count back from HEAD, or a git reference, compared from where HEAD split from it. Documents are read in full.",
+    )
     args = parser.parse_args(argv)
 
-    every = not (args.debugging or args.docs or args.links or args.order)
+    every = not (args.debugging or args.docs or args.links or args.order or args.suppressions)
     if args.fix and not (every or args.order):
         parser.error("--fix sorts what --order reports, so it cannot be asked for without it")
+    if args.list and (args.fix or args.roots or not args.since or not every):
+        parser.error(
+            "--list prints the modules changed since a start rather than checking them, so it needs --since and takes no path, group or --fix"
+        )
+    if args.list:
+        _list_changed(args.since)
+        return 0
 
     # Read before `--fix` writes anything, so a config that fails the run fails it with every file as it was.
     config = _config()
+    # A path the run names is read as named, so `include` narrows only a run naming none.
+    if args.roots:
+        config = dataclasses.replace(config, include=())
     roots = args.roots or list(DEFAULT_ROOTS)
     pinned = frozenset(DEFAULT_PINNED if args.pin is None else args.pin)
 
@@ -1382,10 +1529,13 @@ def main(argv: list[str] | None = None) -> int:
     read: dict[str, list[pathlib.Path]] = {}
     modules: list[pathlib.Path] = []
     documents: list[pathlib.Path] = []
-    if every or args.debugging or args.docs or args.order:
-        modules = read["module"] = _files(roots, ".py", config)
+    if every or args.debugging or args.docs or args.order or args.suppressions:
+        modules = read["module"] = _modules(roots, config, args.since)
+
+    # Read in full, past `--since` and `include`, since a link joins two documents anywhere in the project and a change
+    # to either can break it.
     if every or args.links:
-        documents = read["document"] = _files(roots, ".md", config)
+        documents = read["document"] = _files(roots, ".md", dataclasses.replace(config, include=()))
 
     # `--fix` rewrites before any group reads, so every finding, and every marker a group spends, is matched against the
     # sorted text the marker pass reads after it.
@@ -1407,9 +1557,11 @@ def main(argv: list[str] | None = None) -> int:
         results["LNK"] = _unresolved(documents, pathlib.Path(roots[0])), 0
     if fixed is None and (every or args.order):
         results["ORD"] = _check_order(modules, pinned, used), 0
+    if every or args.suppressions:
+        results["SUP"] = _unjustified(modules, config.nosec), 0
     if judged := frozenset(results) - UNEXEMPTABLE:
         results["MRK"] = _check_markers(modules, judged, used), 0
-    return _report(results, config.off, _scanned(read, roots), fixed)
+    return _report(results, config.off, _scanned(read, roots, args.since), fixed)
 
 
 if __name__ == "__main__":

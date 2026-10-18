@@ -6,6 +6,7 @@ import json
 import pathlib
 import re
 import runpy
+import subprocess
 import sys
 from collections.abc import Callable
 
@@ -522,41 +523,65 @@ TESTS = {
         },
     },
     "groups": {
-        "no flag runs every group": {"args": [], "returns": ("DBG001", "DSC003", "LNK001", "ORD001")},
+        "no flag runs every group": {"args": [], "returns": ("DBG001", "DSC003", "LNK001", "ORD001", "SUP001")},
         "the debugging group runs alone": {"args": ["--debugging"], "returns": ("DBG001",)},
         "the docstring group runs alone": {"args": ["--docs"], "returns": ("DSC003",)},
         "the link group runs alone": {"args": ["--links"], "returns": ("LNK001",)},
         "the order group runs alone": {"args": ["--order"], "returns": ("ORD001",)},
+        "the suppressions group runs alone": {"args": ["--suppressions"], "returns": ("SUP001",)},
         "two named groups run and the others do not": {
             "args": ["--docs", "--links"],
             "returns": ("DSC003", "LNK001"),
         },
     },
     "config": {
-        "no config leaves every code on": {"args": [{}], "returns": (1, ("DBG001", "DSC003", "LNK001", "ORD001"), ())},
+        "no config leaves every code on": {
+            "args": [{}],
+            "returns": (1, ("DBG001", "DSC003", "LNK001", "ORD001"), ("SUP001",)),
+        },
         "an ignored prefix turns off its family": {
             "args": [{"ignore": ["DSC"]}],
-            "returns": (1, ("DBG001", "LNK001", "ORD001"), ("DSC001", "DSC002", "DSC003", "DSC004")),
+            "returns": (1, ("DBG001", "LNK001", "ORD001"), ("DSC001", "DSC002", "DSC003", "DSC004", "SUP001")),
         },
         "a code ignored inside a selected family wins, being more specific": {
             "args": [{"select": ["DSC"], "ignore": ["DSC003"]}],
-            "returns": (0, (), ("DBG001", "DBG002", "DSC003", "LNK001", "LNK002", "MRK001", "ORD001", "ORD002")),
+            "returns": (
+                0,
+                (),
+                ("DBG001", "DBG002", "DSC003", "LNK001", "LNK002", "MRK001", "ORD001", "ORD002", "SUP001"),
+            ),
         },
         "a code selected inside an ignored family wins, being more specific": {
             "args": [{"select": ["DSC003"], "ignore": ["DSC"]}],
             "returns": (
                 1,
                 ("DSC003",),
-                ("DBG001", "DBG002", "DSC001", "DSC002", "DSC004", "LNK001", "LNK002", "MRK001", "ORD001", "ORD002"),
+                (
+                    "DBG001",
+                    "DBG002",
+                    "DSC001",
+                    "DSC002",
+                    "DSC004",
+                    "LNK001",
+                    "LNK002",
+                    "MRK001",
+                    "ORD001",
+                    "ORD002",
+                    "SUP001",
+                ),
             ),
         },
         "a one-letter prefix spans the families it opens": {
             "args": [{"select": ["D"], "ignore": ["DBG001"]}],
-            "returns": (1, ("DSC003",), ("DBG001", "LNK001", "LNK002", "MRK001", "ORD001", "ORD002")),
+            "returns": (1, ("DSC003",), ("DBG001", "LNK001", "LNK002", "MRK001", "ORD001", "ORD002", "SUP001")),
         },
         "a longer prefix outweighs a shorter one": {
             "args": [{"select": ["DSC00"], "ignore": ["DS"]}],
-            "returns": (1, ("DSC003",), ("DBG001", "DBG002", "LNK001", "LNK002", "MRK001", "ORD001", "ORD002")),
+            "returns": (
+                1,
+                ("DSC003",),
+                ("DBG001", "DBG002", "LNK001", "LNK002", "MRK001", "ORD001", "ORD002", "SUP001"),
+            ),
         },
         "a tie goes to ignore": {
             "args": [{"select": ["DSC003"], "ignore": ["doc-run-on-summary"]}],
@@ -575,6 +600,7 @@ TESTS = {
                     "MRK001",
                     "ORD001",
                     "ORD002",
+                    "SUP001",
                 ),
             ),
         },
@@ -595,6 +621,7 @@ TESTS = {
                     "MRK001",
                     "ORD001",
                     "ORD002",
+                    "SUP001",
                 ),
             ),
         },
@@ -603,12 +630,24 @@ TESTS = {
             "returns": (
                 1,
                 ("DBG001",),
-                ("DBG002", "DSC001", "DSC002", "DSC003", "DSC004", "LNK001", "LNK002", "MRK001", "ORD001", "ORD002"),
+                (
+                    "DBG002",
+                    "DSC001",
+                    "DSC002",
+                    "DSC003",
+                    "DSC004",
+                    "LNK001",
+                    "LNK002",
+                    "MRK001",
+                    "ORD001",
+                    "ORD002",
+                    "SUP001",
+                ),
             ),
         },
         "codes and names mix in one list": {
             "args": [{"ignore": ["order-alpha", "DSC003"]}],
-            "returns": (1, ("DBG001", "LNK001"), ("DSC003", "ORD001")),
+            "returns": (1, ("DBG001", "LNK001"), ("DSC003", "ORD001", "SUP001")),
         },
         # The counterpart of `useless-suppression` and `RUF100`: an entry that chooses nothing reads as load-bearing, so
         # it is refused rather than passed over.
@@ -638,6 +677,14 @@ TESTS = {
             "args": [{"ignore": "DSC003"}],
             "raises": (ValueError, "ignore` in .*pyproject\\.toml must be a list of strings"),
         },
+        "an include list written as one string is refused": {
+            "args": [{"include": "src"}],
+            "raises": (ValueError, "include` in .*pyproject\\.toml must be a list of strings"),
+        },
+        "an include pattern opening at a slash can never match, and is refused": {
+            "args": [{"include": ["/src"]}],
+            "raises": (ValueError, "include` in .*pyproject\\.toml holds a pattern that can never match: /src"),
+        },
         "an exclude list written as one string is refused": {
             "args": [{"exclude": "src"}],
             "raises": (ValueError, "exclude` in .*pyproject\\.toml must be a list of strings"),
@@ -657,6 +704,192 @@ TESTS = {
         "a selector that is not a string is refused": {
             "args": [{"select": [3]}],
             "raises": (ValueError, "select` in .*pyproject\\.toml must be a list of strings"),
+        },
+        "a nosec pattern turns on the code holding a justification to it": {
+            "args": [{"nosec_patterns": ["ISSUE-\\d+"]}],
+            "returns": (1, ("DBG001", "DSC003", "LNK001", "ORD001"), ()),
+        },
+        "a nosec pattern list written as one string is refused": {
+            "args": [{"nosec_patterns": "ISSUE-\\d+"}],
+            "raises": (ValueError, "nosec_patterns` in .*pyproject\\.toml must be a list of strings"),
+        },
+        "a nosec pattern that does not compile is refused": {
+            "args": [{"nosec_patterns": ["ISSUE-(\\d+"]}],
+            "raises": (
+                ValueError,
+                "nosec_patterns` in .*pyproject\\.toml holds a pattern that does not compile: ISSUE-\\(",
+            ),
+        },
+        # A pattern an empty justification meets holds every comment to nothing, while reading as a requirement.
+        "a nosec pattern an empty justification matches is refused": {
+            "args": [{"nosec_patterns": ["ISSUE-\\d+", ".*"]}],
+            "raises": (ValueError, "holds a pattern an empty justification matches: \\.\\*$"),
+        },
+    },
+    "include": {
+        "run naming no path reads only what the config includes": {
+            "args": [{"include": ["./src"]}, []],
+            "returns": ("scanned 1 module under .: 5 codes checked, 1 finding", ("src/one.py",)),
+        },
+        "name pattern includes a file at any depth": {
+            "args": [{"include": ["one.py"]}, []],
+            "returns": ("scanned 1 module under .: 5 codes checked, 1 finding", ("src/one.py",)),
+        },
+        "run naming no path from inside an included folder reads all of it": {
+            "args": [{"include": ["./src"]}, [], "src"],
+            "returns": ("scanned 1 module under .: 5 codes checked, 1 finding", ("one.py",)),
+        },
+        "exclude wins over include": {
+            "args": [{"include": ["./src"], "exclude": ["one.py"]}, []],
+            "returns": ("scanned 0 modules under .: 5 codes checked, 0 findings", ()),
+        },
+        "path named on the command line replaces the config includes": {
+            "args": [{"include": ["./src"]}, ["."]],
+            "returns": ("scanned 2 modules under .: 5 codes checked, 2 findings", ("src/one.py", "top.py")),
+        },
+        "run naming no path under a config including nothing reads the working directory": {
+            "args": [{}, []],
+            "returns": ("scanned 2 modules under .: 5 codes checked, 2 findings", ("src/one.py", "top.py")),
+        },
+    },
+    "since": {
+        "a count reads only what the last commits changed, and nothing uncommitted or untracked": {
+            "args": [["--docs", "--since", "1"], {}],
+            "returns": (
+                "scanned 3 modules changed since HEAD~1 under .: 5 codes checked, 3 findings",
+                ("kept.py", "new.py", "src/deep.py"),
+            ),
+        },
+        "a reference reads from where HEAD split from it, not what it gained since": {
+            "args": [["--docs", "--since", "main"], {}],
+            "returns": (
+                "scanned 3 modules changed since main under .: 5 codes checked, 3 findings",
+                ("kept.py", "new.py", "src/deep.py"),
+            ),
+        },
+        "exclude still keeps a changed module out": {
+            "args": [["--docs", "--since", "1"], {"exclude": ["new.py"]}],
+            "returns": (
+                "scanned 2 modules changed since HEAD~1 under .: 5 codes checked, 2 findings",
+                ("kept.py", "src/deep.py"),
+            ),
+        },
+        "include still narrows a run naming no path": {
+            "args": [["--docs", "--since", "1"], {"include": ["./src"]}],
+            "returns": ("scanned 1 module changed since HEAD~1 under .: 5 codes checked, 1 finding", ("src/deep.py",)),
+        },
+        "a path named on the command line replaces include, and an unchanged one is not read": {
+            "args": [["--docs", "--since", "1", "new.py", "old.py"], {"include": ["./src"]}],
+            "returns": (
+                "scanned 1 module changed since HEAD~1 under new.py, old.py: 5 codes checked, 1 finding",
+                ("new.py",),
+            ),
+        },
+        "the summary counts the changed modules beside every document": {
+            "args": [["--docs", "--links", "--since", "1"], {}],
+            "returns": (
+                "scanned 3 modules changed since HEAD~1 and 1 document under .: 7 codes checked, 3 findings",
+                ("kept.py", "new.py", "src/deep.py"),
+            ),
+        },
+        "a count reaching past the first commit fails on what git said": {
+            "args": [["--docs", "--since", "9"], {}],
+            "raises": (ValueError, "git diff failed: .*HEAD~9"),
+        },
+    },
+    "list": {
+        "every module the commits changed is listed, passing over the config's paths": {
+            "args": [["--list", "--since", "1"], {"include": ["./src"], "exclude": ["new.py"]}, "."],
+            "returns": ("./kept.py", "./new.py", "./src/deep.py"),
+        },
+        "a reference lists from where HEAD split from it": {
+            "args": [["--list", "--since", "main"], {}, "."],
+            "returns": ("./kept.py", "./new.py", "./src/deep.py"),
+        },
+        "each path is relative to the working directory": {
+            "args": [["--list", "--since", "1"], {}, "src"],
+            "returns": ("../kept.py", "../new.py", "./deep.py"),
+        },
+        "a config the run would refuse does not stop a list": {
+            "args": [["--list", "--since", "1"], {"unknown": 1}, "."],
+            "returns": ("./kept.py", "./new.py", "./src/deep.py"),
+        },
+    },
+    "refused": {
+        "a group beside list": {
+            "args": [["--list", "--docs"]],
+            "returns": "--list prints the modules changed since a start rather than checking them, so it needs --since and takes no path, group or --fix",
+        },
+        "fix beside list": {
+            "args": [["--list", "--fix"]],
+            "returns": "--list prints the modules changed since a start rather than checking them, so it needs --since and takes no path, group or --fix",
+        },
+        "list without since": {
+            "args": [["--list"]],
+            "returns": "--list prints the modules changed since a start rather than checking them, so it needs --since and takes no path, group or --fix",
+        },
+        "list naming a path": {
+            "args": [["--list", "--since", "1", "."]],
+            "returns": "--list prints the modules changed since a start rather than checking them, so it needs --since and takes no path, group or --fix",
+        },
+        "an option in place of a start": {
+            "args": [["--since=-p"]],
+            "returns": "argument --since: takes a commit count or a git reference, not an option: -p",
+        },
+    },
+    "suppressions": {
+        "a justification naming no ticket is reported": {
+            "args": ["VALUE = 1  # nosec B101  # Skip thing."],
+            "returns": ("SUP001",),
+        },
+        "a bare nosec's justification naming no ticket is reported": {
+            "args": ["VALUE = 1  # nosec  # Skip things."],
+            "returns": ("SUP001",),
+        },
+        "a justification naming a ticket passes": {
+            "args": ["VALUE = 1  # nosec B101  # Skip thing because ISSUE-123 approves it."],
+            "returns": (),
+        },
+        "a bare nosec's justification naming a ticket passes": {
+            "args": ["VALUE = 1  # nosec  # ISSUE-456 allows skipping things."],
+            "returns": (),
+        },
+        "a nosec stating no justification is reported": {
+            "args": ["VALUE = 1  # nosec B101"],
+            "returns": ("SUP001",),
+        },
+        # Bandit reads everything between `nosec` and the next `#` as test IDs, so a ticket written there is one.
+        "a ticket among the test IDs is no justification": {
+            "args": ["VALUE = 1  # nosec ISSUE-789"],
+            "returns": ("SUP001",),
+        },
+        "a nosec after another tool's comment is still read": {
+            "args": ["VALUE = 1  # noqa: S105  # nosec B105"],
+            "returns": ("SUP001",),
+        },
+        "a nosec after another tool's comment is justified the same way": {
+            "args": ["VALUE = 1  # noqa: S105  # nosec B105  # ISSUE-1 approves."],
+            "returns": (),
+        },
+        "a nosec inside a string is no comment": {
+            "args": ['VALUE = "# nosec"'],
+            "returns": (),
+        },
+        "an anchored pattern starts at the justification's first word": {
+            "args": ["VALUE = 1  # nosec  # ISSUE-2 approves.", ["^ISSUE-\\d+"]],
+            "returns": (),
+        },
+        "a justification of only space is none": {
+            "args": ["VALUE = 1  # nosec  #   ", ["\\s"]],
+            "returns": ("SUP001",),
+        },
+        "any one pattern is enough": {
+            "args": ["VALUE = 1  # nosec  # SEC-9 approves.", ["ISSUE-\\d+", "SEC-\\d+"]],
+            "returns": (),
+        },
+        "a marker cannot exempt one, and is itself stale": {
+            "args": ["VALUE = 1  # pyqa: disable=SUP001  # nosec"],
+            "returns": ("MRK001", "SUP001"),
         },
     },
     "summary": {
@@ -683,6 +916,10 @@ TESTS = {
         "a run over nothing still says how much it read": {
             "args": [{}, ["--docs"], {}],
             "returns": "scanned 0 modules under .: 5 codes checked, 0 findings",
+        },
+        "the suppressions group under no pattern checks nothing, and counts nothing it passed over": {
+            "args": [{"one.py": '"""Cases."""\n\nVALUE = 1  # nosec\n'}, ["--suppressions"], {}],
+            "returns": "scanned 1 module under .: 0 codes checked, 0 findings",
         },
         "one code checked takes the singular": {
             "args": [{"one.py": '"""Cases."""\n'}, ["--debugging"], {"select": ["DBG001"]}],
@@ -740,17 +977,15 @@ TESTS = {
             "args": [{"one.py": GROUP_MODULE}, ["--docs"], {"ignore": ["DSC003"]}],
             "returns": (0, ("scanned 1 module under .: 4 codes checked, 0 findings, 1 suppressed",)),
         },
-        "a failing run prints its findings in group order, then its summary, its tally and each rule": {
+        "a failing run prints its summary, then its findings in group order and each rule": {
             "args": [{"one.py": GROUP_MODULE, "one.md": GROUP_DOCUMENT}, ["--docs", "--links"], {}],
             "returns": (
                 1,
                 (
-                    "one.py:1:1: DSC003 `<module>` runs on into And a second sentence. (doc-run-on-summary)",
-                    "one.md:1:1: LNK001 no such file `missing.md` (link-missing-file)",
-                    "",
                     "scanned 1 module and 1 document under .: 7 codes checked, 2 findings",
                     "",
-                    "reported 1 DSC003 (doc-run-on-summary), 1 LNK001 (link-missing-file)",
+                    "one.py:1:1: DSC003 `<module>` runs on into And a second sentence. (doc-run-on-summary)",
+                    "one.md:1:1: LNK001 no such file `missing.md` (link-missing-file)",
                     "",
                     f"DSC003 (doc-run-on-summary)  {pyqa.RULES['DSC003']}",
                     "",
@@ -1320,6 +1555,42 @@ TESTS = {
 }
 
 
+@pytest.fixture(name="history")
+def fixture_history(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> pathlib.Path:
+    """Create a test repository, as the working directory, on a branch one commit past where it split from `main`."""
+
+    def git(*args: str) -> None:
+        """Run one git command in the repository, under an identity and settings of its own."""
+        settings = ("-c", "user.name=pyqa", "-c", "user.email=pyqa@example.com", "-c", "commit.gpgsign=false")
+        subprocess.run(["git", *settings, *args], check=True, capture_output=True, cwd=tmp_path)
+
+    # Every module runs on past its summary, so a docstring run reports each one it reads.
+    clean = '"""Cases. And a second."""\n'
+    git("init", "--initial-branch=main")
+    for name in ("old.py", "kept.py", "gone.py"):
+        (tmp_path / name).write_text(clean)
+    (tmp_path / "one.md").write_text("# One\n")
+    (tmp_path / "src").mkdir()
+    git("add", ".")
+    git("commit", "-m", "base")
+    git("checkout", "-b", "feature")
+    (tmp_path / "kept.py").write_text(f"{clean}\nVALUE = 1\n")
+    (tmp_path / "new.py").write_text(clean)
+    (tmp_path / "src" / "deep.py").write_text(clean)
+    (tmp_path / "one.md").write_text("# One\n\nText.\n")
+    git("rm", "--quiet", "gone.py")
+    git("add", ".")
+    git("commit", "-m", "feature")
+    git("checkout", "main")
+    (tmp_path / "old.py").write_text(f"{clean}\nVALUE = 2\n")
+    git("commit", "-am", "upstream")
+    git("checkout", "feature")
+    (tmp_path / "old.py").write_text(f"{clean}\nVALUE = 3\n")
+    (tmp_path / "loose.py").write_text(clean)
+    monkeypatch.chdir(tmp_path)
+    return tmp_path
+
+
 @pytest.fixture(name="pyqa_report")
 def fixture_pyqa_report(tmp_path: pathlib.Path, capsys: pytest.CaptureFixture) -> Callable[[str, str], tuple[str, ...]]:
     """Return a callable that runs one group over one module's source and answers with every finding it reports."""
@@ -1496,6 +1767,28 @@ def test_a_file_named_as_a_root_is_read_only_by_the_groups_of_its_kind(
     assert output.startswith(f"scanned 0 documents under {tmp_path / 'one.py'}:")
 
 
+@pytest.mark.parametrize_tests(TESTS["refused"])
+def test_a_flag_that_cannot_do_what_it_asks_is_refused(
+    test: dict,
+    capsys: pytest.CaptureFixture,
+    function_tester: Callable,
+) -> None:
+    """A flag that would do nothing beside another, or a start git would read as an option, stops the run on usage.
+
+    Mutation: drop the `--list` guard from `main`. `--list --docs` prints a list and checks nothing, which reads as a
+    docstring pass.
+    """
+
+    def refused(flags: list[str]) -> str:
+        """The error one refused run prints."""
+        with pytest.raises(SystemExit) as stopped:
+            pyqa.main(flags)
+        assert stopped.value.code == 2
+        return capsys.readouterr().err.splitlines()[-1].split(": error: ")[1]
+
+    function_tester(test, refused)
+
+
 @pytest.mark.parametrize_tests(TESTS["glob"])
 def test_a_glob_matches_segment_by_segment(test: dict, function_tester: Callable) -> None:
     """A pattern's segments match a path's one by one, `*` within a segment and `**` across any number of them.
@@ -1522,8 +1815,9 @@ def test_a_group_flag_runs_that_check_and_no_other(
 
     def reported(*flags: str) -> tuple[str, ...]:
         """Every code one run reports, over a tree holding one violation per group."""
-        (tmp_path / "one.py").write_text(GROUP_MODULE)
+        (tmp_path / "one.py").write_text(GROUP_MODULE.replace("print()", "print()  # nosec"))
         (tmp_path / "one.md").write_text(GROUP_DOCUMENT, encoding="utf-8")
+        (tmp_path / "pyproject.toml").write_text("[tool.pyqa]\nnosec_patterns = ['ISSUE-\\d+']\n")
         monkeypatch.chdir(tmp_path)
         pyqa.main([*flags, "."])
         printed = capsys.readouterr().out.splitlines()
@@ -1705,6 +1999,32 @@ def test_a_module_freezing_every_definition_is_neither_reported_nor_sorted(
     assert ":1: " not in capsys.readouterr().out
 
 
+@pytest.mark.parametrize_tests(TESTS["suppressions"])
+def test_a_nosec_states_a_justification_its_config_accepts(
+    test: dict,
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+    function_tester: Callable,
+) -> None:
+    """A `# nosec` passes only when the text after the `#` closing its test IDs matches one `nosec_patterns` entry.
+
+    Mutation: search the whole comment rather than its justification in `_unjustified`. A ticket written among the test
+    IDs, which bandit reads as one, passes as the justification it is not.
+    """
+
+    def reported(line: str, patterns: list[str] | None = None) -> tuple[str, ...]:
+        """Every code a full run reports over one module holding this line, under these nosec patterns."""
+        (tmp_path / "one.py").write_text(f'"""Cases."""\n\n{line}\n')
+        listed = json.dumps(["ISSUE-\\d+"] if patterns is None else patterns)
+        (tmp_path / "pyproject.toml").write_text(f"[tool.pyqa]\nnosec_patterns = {listed}\n")
+        monkeypatch.chdir(tmp_path)
+        pyqa.main(["."])
+        return tuple(sorted({one.split()[1] for one in capsys.readouterr().out.splitlines() if ":1: " in one}))
+
+    function_tester(test, reported)
+
+
 def test_a_one_sentence_summary_passes(tmp_path: pathlib.Path, capsys: pytest.CaptureFixture) -> None:
     """A summary holding one sentence is what the gate is asking for.
 
@@ -1777,15 +2097,44 @@ def test_a_rewrite_is_trusted_only_holding_every_line_and_still_parsing(
     function_tester(test, pyqa._is_faithful)
 
 
-@pytest.mark.parametrize_tests(TESTS["layout"])
-def test_a_run_prints_its_findings_then_its_summary_then_its_rules(
+@pytest.mark.parametrize_tests(TESTS["include"])
+def test_a_run_naming_no_path_reads_only_what_its_config_includes(
     test: dict,
     tmp_path: pathlib.Path,
     capsys: pytest.CaptureFixture,
     monkeypatch: pytest.MonkeyPatch,
     function_tester: Callable,
 ) -> None:
-    """A run prints its findings in the order the groups run, then its summary line, then the tally and each rule.
+    """A run naming no path reads what the config's `include` covers, and a path on the command line reads as named.
+
+    Mutation: keep `include` when the run names a path in `main`. A recipe naming a path outside what the config
+    includes reads as a clean pass over nothing.
+    """
+
+    def read(config: dict, paths: list[str], within: str = ".") -> tuple[str, tuple[str, ...]]:
+        """The summary line one run from a folder prints under this config and these paths, and the files it reported on."""
+        (tmp_path / "src").mkdir(exist_ok=True)
+        (tmp_path / "src" / "one.py").write_text('"""One sentence. And a second."""\n')
+        (tmp_path / "top.py").write_text('"""One sentence. And a second."""\n')
+        table = "".join(f"{key} = {json.dumps(value)}\n" for key, value in config.items())
+        (tmp_path / "pyproject.toml").write_text(f"[tool.pyqa]\n{table}")
+        monkeypatch.chdir(tmp_path / within)
+        pyqa.main(["--docs", *paths])
+        printed = capsys.readouterr().out.splitlines()
+        return printed[0], tuple(one.split(":")[0] for one in printed if ": DSC003 " in one)
+
+    function_tester(test, read)
+
+
+@pytest.mark.parametrize_tests(TESTS["layout"])
+def test_a_run_prints_its_summary_then_its_findings_then_its_rules(
+    test: dict,
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+    function_tester: Callable,
+) -> None:
+    """A run prints its summary line, then its findings in the order the groups run, then each rule.
 
     Mutation: sort the findings by path and line before printing them in `_report`. The document's link finding rises
     above the module's docstring finding, and a reader loses the group each finding came from.
@@ -1804,6 +2153,19 @@ def test_a_run_prints_its_findings_then_its_summary_then_its_rules(
     function_tester(test, printed)
 
 
+def test_a_run_under_no_config_checks_every_code_but_the_one_needing_a_pattern(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With no `pyproject.toml` at or above the working directory, every code is on but `SUP001`, which has no pattern.
+
+    Mutation: default `Config.off` to no code. A project with no config holds every `# nosec` to a pattern list it has
+    no way to have written, and has nothing to justify one with.
+    """
+    monkeypatch.chdir(tmp_path)
+    assert pyqa._config().off == frozenset({"SUP001"})
+
+
 def test_a_section_spelled_as_the_guide_spells_it_is_not_reported(
     tmp_path: pathlib.Path,
     capsys: pytest.CaptureFixture,
@@ -1818,6 +2180,30 @@ def test_a_section_spelled_as_the_guide_spells_it_is_not_reported(
     status = pyqa.main(["--docs", str(tmp_path)])
     assert status == 0
     assert ":1: DSC" not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize_tests(TESTS["since"])
+def test_a_since_run_reads_only_the_modules_its_commits_changed(
+    test: dict,
+    history: pathlib.Path,
+    capsys: pytest.CaptureFixture,
+    function_tester: Callable,
+) -> None:
+    """A run since a start reads the modules committed since it, through the same filters as any run.
+
+    Mutation: compare from the start itself rather than from where `HEAD` split from it in `_changed`. A branch behind
+    its upstream reads every file the upstream changed since as a change of its own.
+    """
+
+    def read(flags: list[str], config: dict) -> tuple[str, tuple[str, ...]]:
+        """The summary line one run prints over the repository under this config, and the files it reported on."""
+        table = "".join(f"{key} = {json.dumps(value)}\n" for key, value in config.items())
+        (history / "pyproject.toml").write_text(f"[tool.pyqa]\n{table}")
+        pyqa.main(flags)
+        printed = capsys.readouterr().out.splitlines()
+        return printed[0], tuple(one.split(":")[0] for one in printed if ": DSC003 " in one)
+
+    function_tester(test, read)
 
 
 @pytest.mark.parametrize_tests(TESTS["defined"])
@@ -1916,6 +2302,26 @@ def test_an_excluded_document_is_not_followed(
     (tmp_path / "docs" / "b.md").write_text(GROUP_DOCUMENT, encoding="utf-8")
     monkeypatch.chdir(tmp_path)
     pyqa.main(["--links", "."])
+    reported = [one for one in capsys.readouterr().out.splitlines() if ":1: " in one]
+    assert reported == ["docs/b.md:1:1: LNK001 no such file `missing.md` (link-missing-file)"]
+
+
+def test_an_include_list_narrows_the_modules_and_never_the_documents(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A run naming no path follows every document's links, whatever the config's `include` covers.
+
+    Mutation: find the documents with the config's includes in `main`. The document outside them goes unread, and its
+    broken link passes.
+    """
+    (tmp_path / "pyproject.toml").write_text('[tool.pyqa]\ninclude = ["./src"]\n')
+    (tmp_path / "src").mkdir()
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "b.md").write_text(GROUP_DOCUMENT, encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    pyqa.main(["--links"])
     reported = [one for one in capsys.readouterr().out.splitlines() if ":1: " in one]
     assert reported == ["docs/b.md:1:1: LNK001 no such file `missing.md` (link-missing-file)"]
 
@@ -2107,6 +2513,31 @@ def test_fix_sorts_the_module_it_would_have_reported(tmp_path: pathlib.Path, cap
     assert pyqa.main(["--order", str(tmp_path)]) == 0
 
 
+@pytest.mark.parametrize_tests(TESTS["list"])
+def test_list_prints_every_module_changed_since_its_start(
+    test: dict,
+    history: pathlib.Path,
+    capsys: pytest.CaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+    function_tester: Callable,
+) -> None:
+    """`--list` prints each module git reports changed, and no `[tool.pyqa]` path keeps one out.
+
+    Mutation: list the modules a since run reads rather than every changed one in `main`. A tool handed the list
+    passes over a changed module the pyqa config keeps out, though the tool's own config would read it.
+    """
+
+    def listed(flags: list[str], config: dict, folder: str) -> tuple[str, ...]:
+        """Every line one list prints from this folder of the repository, under this config."""
+        table = "".join(f"{key} = {json.dumps(value)}\n" for key, value in config.items())
+        (history / "pyproject.toml").write_text(f"[tool.pyqa]\n{table}")
+        monkeypatch.chdir(history / folder)
+        pyqa.main(flags)
+        return tuple(capsys.readouterr().out.splitlines())
+
+    function_tester(test, listed)
+
+
 @pytest.mark.parametrize_tests(TESTS["summary"])
 def test_one_line_sums_up_what_a_run_read_and_found(
     test: dict,
@@ -2135,14 +2566,13 @@ def test_one_line_sums_up_what_a_run_read_and_found(
 
 
 def test_the_report_names_every_code_it_prints(tmp_path: pathlib.Path, capsys: pytest.CaptureFixture) -> None:
-    """A finding ends with its code's name, and the tally and the rule printed under the run name the code the same way.
+    """A finding ends with its code's name, and the rule printed under the run names the code the same way.
 
-    Mutation: print the bare code in `_report`'s tally. A reader of the tally is back to looking the code up.
+    Mutation: print the bare code in `_report`'s rule line. A reader of the rule is back to looking the code up.
     """
     (tmp_path / "one.py").write_text('"""Cases. And a second."""\n')
     status = pyqa.main(["--docs", str(tmp_path)])
     printed = capsys.readouterr().out.splitlines()
     assert status == 1
     assert f"{tmp_path / 'one.py'}:1:1: DSC003 `<module>` runs on into And a second. (doc-run-on-summary)" in printed
-    assert "reported 1 DSC003 (doc-run-on-summary)" in printed
     assert f"DSC003 (doc-run-on-summary)  {pyqa.RULES['DSC003']}" in printed
